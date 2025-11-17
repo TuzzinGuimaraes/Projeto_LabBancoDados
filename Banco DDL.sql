@@ -290,7 +290,7 @@ CREATE TABLE avaliacoes (
                             INDEX idx_data (data_avaliacao)
 ) ENGINE=InnoDB;
 
--- Tabela de comentários (AUTO_INCREMENT justificado por volume e temporalidade)
+-- Tabela de comentários (AUTO_INCREMENT justificado)
 CREATE TABLE comentarios_avaliacoes (
                                         id_comentario INT NOT NULL AUTO_INCREMENT,
                                         id_avaliacao VARCHAR(50) NOT NULL,
@@ -302,11 +302,10 @@ CREATE TABLE comentarios_avaliacoes (
                                         FOREIGN KEY (id_usuario) REFERENCES usuarios(id_usuario) ON DELETE CASCADE,
                                         INDEX idx_avaliacao (id_avaliacao)
 ) ENGINE=InnoDB;
--- JUSTIFICATIVA AUTO_INCREMENT: Alto volume de inserções, dados temporários,
--- ordem cronológica importante, não precisa ser legível por humanos
+
 
 -- ============================================
--- TRIGGERS (mantidos e adaptados para novos IDs)
+-- TRIGGERS
 -- ============================================
 
 DELIMITER $$
@@ -434,7 +433,7 @@ END$$
 DELIMITER ;
 
 -- ============================================
--- PROCEDURES (adaptadas para novos IDs)
+-- PROCEDURES
 -- ============================================
 
 DELIMITER $$
@@ -588,7 +587,7 @@ END$$
 DELIMITER ;
 
 -- ============================================
--- VIEWS (mantidas, funcionam com novos IDs)
+-- VIEWS
 -- ============================================
 
 CREATE VIEW vw_animes_populares AS
