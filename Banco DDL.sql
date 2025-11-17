@@ -705,91 +705,9 @@ INSERT INTO animes (titulo_original, titulo_portugues, titulo_ingles, sinopse, d
                                                                                                                                                                                                      ('Steins;Gate', 'Steins;Gate', 'Steins;Gate', 'Um grupo de amigos cria acidentalmente uma máquina do tempo funcional.', '2011-04-06', 'finalizado', 24, 24, '14', 'White Fox', 'Visual Novel'),
                                                                                                                                                                                                      ('Death Note', 'Death Note', 'Death Note', 'Um estudante encontra um caderno que mata qualquer pessoa cujo nome seja escrito nele.', '2006-10-04', 'finalizado', 37, 24, '16', 'Madhouse', 'Manga');
 
-# UTILIZANDO '%' POR CONTA DO DOCKER, AJUSTE CONFORME NECESSÁRIO
+# UTILIZANDO '%' POR CONTA DO DOCKER
 CREATE USER IF NOT EXISTS 'anime_app_user'@'%' IDENTIFIED BY 'AnimeList@2025!Secure';
 
 GRANT ALL PRIVILEGES ON anime_list_db.* TO 'anime_app_user'@'%';
 
 FLUSH PRIVILEGES;
-
--- ============================================
--- DOCUMENTAÇÃO DE JUSTIFICATIVAS
--- ============================================
-
-/*
-RESUMO DE IDS NO SISTEMA:
-
-1. TABELA: usuarios
-   - PK: id_usuario VARCHAR(50) - Formato: USR-YYYYMMDD-XXXXX
-   - Código: codigo_usuario VARCHAR(20) - Formato: USR00000001
-   - Geração: Trigger before_insert_usuario usando function gerar_id_usuario()
-   - Justificativa: IDs legíveis, rastreáveis por data, únicos por design
-
-2. TABELA: grupos_usuarios
-   - PK: id_grupo INT AUTO_INCREMENT
-   - JUSTIFICATIVA AUTO_INCREMENT:
-     * Apenas 4 registros fixos (admin, moderador, usuario, visitante)
-     * Dados de configuração que não mudam
-     * IDs numéricos facilitam lógica de permissões
-     * Melhor performance em JOINs frequentes
-     * Não há necessidade de IDs legíveis para humanos
-
-3. TABELA: animes
-   - PK: id_anime VARCHAR(50) - Formato: ANM-TIPO-YYYY-XXXXX
-   - Código: codigo_anime VARCHAR(20) - Formato: AOT20130001 (3 letras + ano + seq)
-   - Geração: Trigger before_insert_anime usando functions
-   - Justificativa: Códigos semânticos, fácil identificação, único por ano
-
-4. TABELA: generos
-   - PK: id_genero INT AUTO_INCREMENT
-   - JUSTIFICATIVA AUTO_INCREMENT:
-     * Lista fixa de ~20 gêneros
-     * Raramente modificado
-     * Tabela de referência/lookup
-     * Performance crítica (muitos JOINs)
-     * Não precisa ser legível
-
-5. TABELA: lista_usuarios
-   - PK: id_lista VARCHAR(50) - Formato: LST-timestamp-random
-   - Código: codigo_lista VARCHAR(50) - Formato: LSTYYYYMMDD-XXXXXX (com sequência única)
-   - Geração: Trigger before_insert_lista usando sequência lista_seq
-   - Justificativa: UUID garante unicidade global, código usa sequência para evitar duplicatas
-
-6. TABELA: avaliacoes
-   - PK: id_avaliacao VARCHAR(50) - Formato: AVL-timestamp-random
-   - Código: codigo_avaliacao VARCHAR(30) - Formato: AVLYYYYMMDD-XXXXX
-   - Geração: Trigger before_insert_avaliacao
-   - Justificativa: UUID para distribuição, código com data para rastreamento
-
-7. TABELA: comentarios_avaliacoes
-   - PK: id_comentario INT AUTO_INCREMENT
-   - JUSTIFICATIVA AUTO_INCREMENT:
-     * Alto volume de inserções (pode ter milhares por dia)
-     * Dados temporários (podem ser arquivados/deletados)
-     * Ordem cronológica é crítica
-     * Performance é prioridade
-     * Não precisa ser rastreável individualmente
-     * ID numérico sequencial é ideal para paginação
-
-TABELA DE SEQUÊNCIAS:
-- Controla geração de IDs customizados
-- Garante unicidade através de locks transacionais
-- Permite prefixos e formatos personalizados
-- Rastreável e auditável
-
-VANTAGENS DA ABORDAGEM:
-✅ IDs legíveis e rastreáveis onde necessário
-✅ Performance otimizada onde crítico (AUTO_INCREMENT em tabelas lookup)
-✅ Flexibilidade para diferentes formatos
-✅ Unicidade garantida
-✅ Fácil debugging e suporte
-✅ Justificativa clara para cada escolha
-
-PADRÕES UTILIZADOS:
-- VARCHAR com prefixos: Para entidades principais (usuários, animes)
-- UUIDs customizados: Para relacionamentos de alto volume
-- AUTO_INCREMENT: Apenas para tabelas de configuração e alto volume
-- Códigos semânticos: Para facilitar identificação visual
-*/
-
-SELECT 'Schema criado com sucesso!' AS status;
