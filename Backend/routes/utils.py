@@ -2,9 +2,9 @@
 Blueprint de Utilidades
 Endpoints diversos: gêneros, notificações, health, etc
 """
+import database
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
-import database  # Importar módulo inteiro
 from database import execute_query
 
 utils_bp = Blueprint('utils', __name__)

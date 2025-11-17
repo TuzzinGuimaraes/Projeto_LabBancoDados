@@ -2,10 +2,10 @@
 Blueprint de Animes
 Endpoints para CRUD de animes, gêneros e atualizações
 """
+import database
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from datetime import datetime
-import database  # Importar módulo inteiro
 from database import execute_query, get_db_connection
 from decorators import permission_required, get_user_permissions
 

@@ -1,11 +1,10 @@
 """
 Blueprint de Notícias
-Endpoints para notícias do mundo anime (MongoDB)
 """
+import database
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required
 from datetime import datetime
-import database  # Importar módulo inteiro ao invés de variáveis
 from decorators import permission_required
 
 noticias_bp = Blueprint('noticias', __name__)

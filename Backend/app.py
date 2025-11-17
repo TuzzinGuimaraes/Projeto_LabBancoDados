@@ -23,7 +23,6 @@ from routes import (
     utils_bp
 )
 
-# Criar app
 app = Flask(__name__)
 CORS(app)
 
