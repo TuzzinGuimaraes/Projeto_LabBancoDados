@@ -1,7 +1,15 @@
 import React, { useState } from 'react';
-import { X, Save, Star } from 'lucide-react';
+import { Save, Star, X } from 'lucide-react';
+
+const tipoLabel = {
+    anime: 'anime',
+    manga: 'mangá',
+    jogo: 'jogo',
+    musica: 'música'
+};
 
 const AvaliacaoModal = ({ isOpen, onClose, onSave, anime }) => {
+    const midia = anime;
     const [formData, setFormData] = useState({
         nota: 5,
         titulo_avaliacao: '',
@@ -17,21 +25,23 @@ const AvaliacaoModal = ({ isOpen, onClose, onSave, anime }) => {
         }));
     };
 
+    const resetForm = () => {
+        setFormData({
+            nota: 5,
+            titulo_avaliacao: '',
+            texto_avaliacao: ''
+        });
+        setError('');
+    };
+
     const handleSubmit = async (e) => {
         e.preventDefault();
         setLoading(true);
         setError('');
 
         try {
-            await onSave(anime.id_anime, formData);
-
-            // Limpar formulário
-            setFormData({
-                nota: 5,
-                titulo_avaliacao: '',
-                texto_avaliacao: ''
-            });
-
+            await onSave(midia.id_midia, formData);
+            resetForm();
             onClose();
         } catch (err) {
             setError(err.message || 'Erro ao criar avaliação');
@@ -42,27 +52,21 @@ const AvaliacaoModal = ({ isOpen, onClose, onSave, anime }) => {
 
     const handleClose = () => {
         if (!loading) {
-            setFormData({
-                nota: 5,
-                titulo_avaliacao: '',
-                texto_avaliacao: ''
-            });
-            setError('');
+            resetForm();
             onClose();
         }
     };
 
-    if (!isOpen || !anime) return null;
+    if (!isOpen || !midia) return null;
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-                {/* Header */}
                 <div className="sticky top-0 bg-gradient-to-r from-purple-600 to-blue-600 text-white p-6 rounded-t-2xl">
                     <div className="flex items-center justify-between">
                         <div>
-                            <h2 className="text-2xl font-bold mb-1">Avaliar Anime</h2>
-                            <p className="text-sm text-purple-100">{anime.titulo_portugues || anime.titulo_original}</p>
+                            <h2 className="text-2xl font-bold mb-1">Avaliar {tipoLabel[midia.tipo] || 'mídia'}</h2>
+                            <p className="text-sm text-purple-100">{midia.titulo_portugues || midia.titulo_original}</p>
                         </div>
                         <button
                             onClick={handleClose}
@@ -74,7 +78,6 @@ const AvaliacaoModal = ({ isOpen, onClose, onSave, anime }) => {
                     </div>
                 </div>
 
-                {/* Content */}
                 <form onSubmit={handleSubmit} className="p-6 space-y-6">
                     {error && (
                         <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg">
@@ -82,7 +85,6 @@ const AvaliacaoModal = ({ isOpen, onClose, onSave, anime }) => {
                         </div>
                     )}
 
-                    {/* Nota */}
                     <div>
                         <label className="block text-sm font-semibold text-gray-700 mb-3">
                             Sua Nota (0 - 10) *
@@ -103,39 +105,32 @@ const AvaliacaoModal = ({ isOpen, onClose, onSave, anime }) => {
                                 <Star size={24} className="text-yellow-500" fill="currentColor" />
                             </div>
                         </div>
-                        <div className="flex justify-between text-xs text-gray-500 mt-2">
-                            <span>Péssimo</span>
-                            <span>Regular</span>
-                            <span>Excelente</span>
-                        </div>
                     </div>
 
-                    {/* Título da Avaliação */}
                     <div>
                         <label className="block text-sm font-semibold text-gray-700 mb-2">
-                            Título da Avaliação (opcional)
+                            Título da Avaliação
                         </label>
                         <input
                             type="text"
                             value={formData.titulo_avaliacao}
                             onChange={(e) => handleChange('titulo_avaliacao', e.target.value)}
                             className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                            placeholder="Ex: Melhor anime da temporada!"
+                            placeholder="Ex: Melhor descoberta do mês"
                             disabled={loading}
                             maxLength={100}
                         />
                     </div>
 
-                    {/* Texto da Avaliação */}
                     <div>
                         <label className="block text-sm font-semibold text-gray-700 mb-2">
-                            Sua Avaliação (opcional)
+                            Sua Avaliação
                         </label>
                         <textarea
                             value={formData.texto_avaliacao}
                             onChange={(e) => handleChange('texto_avaliacao', e.target.value)}
                             className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-none"
-                            placeholder="Escreva sua opinião sobre o anime..."
+                            placeholder="Escreva sua opinião sobre esta mídia..."
                             rows="6"
                             disabled={loading}
                             maxLength={1000}
@@ -145,7 +140,6 @@ const AvaliacaoModal = ({ isOpen, onClose, onSave, anime }) => {
                         </p>
                     </div>
 
-                    {/* Buttons */}
                     <div className="flex gap-3 pt-4">
                         <button
                             type="button"
@@ -180,4 +174,3 @@ const AvaliacaoModal = ({ isOpen, onClose, onSave, anime }) => {
 };
 
 export default AvaliacaoModal;
-

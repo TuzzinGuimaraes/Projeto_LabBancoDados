@@ -1,16 +1,69 @@
-import React, { useState } from 'react';
-import { Star, Trash2, MessageSquarePlus } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { MessageSquarePlus, Star, Trash2 } from 'lucide-react';
 
-const MinhaListaTab = ({ minhaLista, onUpdate, onRemove, onAvaliar, onViewDetails }) => {
-    const statusOptions = ['assistindo', 'completo', 'planejado', 'pausado', 'abandonado'];
+const STATUS_POR_TIPO = {
+    anime: ['assistindo', 'completo', 'planejado', 'pausado', 'abandonado'],
+    manga: ['lendo', 'lido', 'planejado', 'pausado', 'abandonado'],
+    jogo: ['jogando', 'zerado', 'platinado', 'na_fila', 'abandonado'],
+    musica: ['ouvindo', 'ouvido', 'planejado']
+};
+
+const LABEL_TIPO = {
+    anime: 'Animes',
+    manga: 'Mangás',
+    jogo: 'Jogos',
+    musica: 'Músicas'
+};
+
+const labelProgresso = (tipo) => {
+    switch (tipo) {
+        case 'anime':
+            return 'Episódios';
+        case 'manga':
+            return 'Capítulos';
+        case 'jogo':
+            return 'Horas';
+        case 'musica':
+            return 'Faixas';
+        default:
+            return 'Progresso';
+    }
+};
+
+const MinhaListaTab = ({ minhaLista, activeMediaType, onChangeMediaType, onUpdate, onRemove, onAvaliar, onViewDetails }) => {
     const [filtroStatus, setFiltroStatus] = useState('todos');
+    const statusOptions = STATUS_POR_TIPO[activeMediaType] || [];
+
+    const listaDoTipo = useMemo(
+        () => minhaLista.filter(item => item.tipo === activeMediaType),
+        [minhaLista, activeMediaType]
+    );
 
     const listaFiltrada = filtroStatus === 'todos'
-        ? minhaLista
-        : minhaLista.filter(item => item.status_visualizacao === filtroStatus);
+        ? listaDoTipo
+        : listaDoTipo.filter(item => item.status_consumo === filtroStatus);
 
     return (
         <div className="space-y-6">
+            <div className="flex gap-2 flex-wrap">
+                {Object.entries(LABEL_TIPO).map(([tipo, label]) => (
+                    <button
+                        key={tipo}
+                        onClick={() => {
+                            onChangeMediaType(tipo);
+                            setFiltroStatus('todos');
+                        }}
+                        className={`px-4 py-2 rounded-lg font-medium transition-all ${
+                            activeMediaType === tipo
+                                ? 'bg-purple-600 text-white'
+                                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                        }`}
+                    >
+                        {label} ({minhaLista.filter(item => item.tipo === tipo).length})
+                    </button>
+                ))}
+            </div>
+
             <div className="flex gap-2 flex-wrap">
                 <button
                     onClick={() => setFiltroStatus('todos')}
@@ -20,7 +73,7 @@ const MinhaListaTab = ({ minhaLista, onUpdate, onRemove, onAvaliar, onViewDetail
                             : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
                     }`}
                 >
-                    Todos ({minhaLista.length})
+                    Todos ({listaDoTipo.length})
                 </button>
                 {statusOptions.map(status => (
                     <button
@@ -32,14 +85,14 @@ const MinhaListaTab = ({ minhaLista, onUpdate, onRemove, onAvaliar, onViewDetail
                                 : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
                         }`}
                     >
-                        {status} ({minhaLista.filter(item => item.status_visualizacao === status).length})
+                        {status} ({listaDoTipo.filter(item => item.status_consumo === status).length})
                     </button>
                 ))}
             </div>
 
             {listaFiltrada.length === 0 ? (
                 <div className="text-center py-20">
-                    <p className="text-gray-500 text-lg">Nenhum anime nesta categoria ainda</p>
+                    <p className="text-gray-500 text-lg">Nenhuma mídia nesta categoria ainda</p>
                 </div>
             ) : (
                 <div className="space-y-4">
@@ -47,25 +100,25 @@ const MinhaListaTab = ({ minhaLista, onUpdate, onRemove, onAvaliar, onViewDetail
                         <div key={item.id_lista} className="bg-white rounded-xl shadow-md p-4 flex gap-4">
                             <img
                                 src={item.poster_url || 'https://via.placeholder.com/100x150'}
-                                alt={item.titulo_portugues}
+                                alt={item.titulo_portugues || item.titulo_original}
                                 className="w-24 h-36 object-cover rounded-lg cursor-pointer hover:opacity-80 transition-opacity"
                                 onClick={() => onViewDetails && onViewDetails(item)}
                             />
 
                             <div className="flex-1">
-                                <h3 
+                                <h3
                                     className="font-bold text-lg mb-2 cursor-pointer hover:text-purple-600 transition-colors"
                                     onClick={() => onViewDetails && onViewDetails(item)}
                                 >
-                                    {item.titulo_portugues}
+                                    {item.titulo_portugues || item.titulo_original}
                                 </h3>
 
                                 <div className="space-y-2">
                                     <div className="flex items-center gap-2">
-                                        <label className="text-sm text-gray-600 w-20">Status:</label>
+                                        <label className="text-sm text-gray-600 w-24">Status:</label>
                                         <select
-                                            value={item.status_visualizacao}
-                                            onChange={(e) => onUpdate(item.id_lista, { status_visualizacao: e.target.value })}
+                                            value={item.status_consumo}
+                                            onChange={(e) => onUpdate(item.id_lista, { status_consumo: e.target.value })}
                                             className="px-3 py-1 border rounded-lg text-sm"
                                         >
                                             {statusOptions.map(status => (
@@ -77,27 +130,29 @@ const MinhaListaTab = ({ minhaLista, onUpdate, onRemove, onAvaliar, onViewDetail
                                     </div>
 
                                     <div className="flex items-center gap-2">
-                                        <label className="text-sm text-gray-600 w-20">Episódios:</label>
+                                        <label className="text-sm text-gray-600 w-24">{labelProgresso(item.tipo)}:</label>
                                         <input
                                             type="number"
                                             min="0"
-                                            max={item.numero_episodios}
-                                            value={item.episodios_assistidos}
-                                            onChange={(e) => onUpdate(item.id_lista, { episodios_assistidos: parseInt(e.target.value) })}
-                                            className="px-3 py-1 border rounded-lg text-sm w-20"
+                                            max={item.progresso_total || item.progresso_total_padrao || undefined}
+                                            value={item.progresso_atual || 0}
+                                            onChange={(e) => onUpdate(item.id_lista, { progresso_atual: Number(e.target.value) })}
+                                            className="px-3 py-1 border rounded-lg text-sm w-24"
                                         />
-                                        <span className="text-sm text-gray-500">/ {item.numero_episodios || '?'}</span>
+                                        <span className="text-sm text-gray-500">
+                                            / {item.progresso_total || item.progresso_total_padrao || '?'}
+                                        </span>
                                     </div>
 
                                     <div className="flex items-center gap-2">
-                                        <label className="text-sm text-gray-600 w-20">Nota:</label>
+                                        <label className="text-sm text-gray-600 w-24">Nota:</label>
                                         <input
                                             type="number"
                                             min="0"
                                             max="10"
                                             step="0.5"
                                             value={item.nota_usuario || ''}
-                                            onChange={(e) => onUpdate(item.id_lista, { nota_usuario: parseFloat(e.target.value) })}
+                                            onChange={(e) => onUpdate(item.id_lista, { nota_usuario: e.target.value === '' ? null : Number(e.target.value) })}
                                             className="px-3 py-1 border rounded-lg text-sm w-20"
                                             placeholder="0-10"
                                         />
@@ -111,7 +166,7 @@ const MinhaListaTab = ({ minhaLista, onUpdate, onRemove, onAvaliar, onViewDetail
                                     <label className="flex items-center gap-2 text-sm">
                                         <input
                                             type="checkbox"
-                                            checked={item.favorito}
+                                            checked={Boolean(item.favorito)}
                                             onChange={(e) => onUpdate(item.id_lista, { favorito: e.target.checked })}
                                             className="w-4 h-4"
                                         />
@@ -124,7 +179,7 @@ const MinhaListaTab = ({ minhaLista, onUpdate, onRemove, onAvaliar, onViewDetail
                                 <button
                                     onClick={() => onAvaliar(item)}
                                     className="bg-purple-500 text-white p-2 rounded-lg hover:bg-purple-600 transition-all"
-                                    title="Avaliar anime"
+                                    title="Avaliar mídia"
                                 >
                                     <MessageSquarePlus size={20} />
                                 </button>
@@ -145,4 +200,3 @@ const MinhaListaTab = ({ minhaLista, onUpdate, onRemove, onAvaliar, onViewDetail
 };
 
 export default MinhaListaTab;
-

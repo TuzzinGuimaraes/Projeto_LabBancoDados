@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Shield, Users, Star, Trash2 } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { Shield, Star, Trash2, Users } from 'lucide-react';
 
 const AdminTab = ({
     permissions,
@@ -66,7 +66,7 @@ const AdminTab = ({
                                     <p className="text-sm text-gray-600">{usuario.email}</p>
                                     <p className="text-xs text-gray-500">
                                         Grupos: {usuario.grupos || 'Nenhum'} |
-                                        Animes: {usuario.total_animes} |
+                                        Mídias: {usuario.total_midias || usuario.total_animes || 0} |
                                         Avaliações: {usuario.total_avaliacoes}
                                     </p>
                                 </div>
@@ -99,7 +99,8 @@ const AdminTab = ({
                                         <h4 className="font-bold">{avaliacao.titulo_avaliacao || 'Sem título'}</h4>
                                         <p className="text-sm text-gray-600">
                                             Por: {avaliacao.nome_completo} |
-                                            Anime: {avaliacao.titulo_portugues || avaliacao.titulo_original} |
+                                            Tipo: {avaliacao.tipo} |
+                                            Título: {avaliacao.titulo_portugues || avaliacao.titulo_original} |
                                             Nota: ⭐ {avaliacao.nota}
                                         </p>
                                     </div>
@@ -121,4 +122,3 @@ const AdminTab = ({
 };
 
 export default AdminTab;
-

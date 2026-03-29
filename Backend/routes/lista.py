@@ -1,197 +1,174 @@
 """
-Blueprint de Lista do Usuário
-Endpoints para gerenciar lista pessoal de animes
+Blueprint de lista do usuário.
 """
-from flask import Blueprint, request, jsonify
-from flask_jwt_extended import jwt_required, get_jwt_identity
-from database import execute_query, call_procedure
+from flask import Blueprint, jsonify, request
+from flask_jwt_extended import get_jwt_identity, jwt_required
+
+from repositories import ListaRepository, MidiaRepository
+from schemas import AtualizacaoListaSchema, ListaMidiaSchema, ValidationError
 
 lista_bp = Blueprint('lista', __name__)
+
+lista_repository = ListaRepository()
+midia_repository = MidiaRepository()
+lista_schema = ListaMidiaSchema()
+atualizacao_schema = AtualizacaoListaSchema()
+
+
+def _normalizar_payload_lista(data: dict) -> dict:
+    payload = dict(data)
+    if 'id_anime' in payload and 'id_midia' not in payload:
+        payload['id_midia'] = payload['id_anime']
+    if 'status_visualizacao' in payload and 'status_consumo' not in payload:
+        payload['status_consumo'] = payload['status_visualizacao']
+    if 'episodios_assistidos' in payload and 'progresso_atual' not in payload:
+        payload['progresso_atual'] = payload['episodios_assistidos']
+    if 'status_consumo' in payload and 'status' not in payload:
+        payload['status'] = payload['status_consumo']
+    return payload
+
 
 @lista_bp.route('', methods=['GET'])
 @jwt_required()
 def obter_lista_usuario():
-    """Obter lista de animes do usuário"""
+    """Obter lista do usuário autenticado, com filtro por tipo."""
     try:
         user_id = get_jwt_identity()
-        status = request.args.get('status')
-
-        query = """
-                SELECT lu.*,
-                       a.titulo_portugues,
-                       a.titulo_original,
-                       a.poster_url,
-                       a.numero_episodios,
-                       a.status_anime,
-                       a.nota_media
-                FROM lista_usuarios lu
-                         JOIN animes a ON lu.id_anime = a.id_anime
-                WHERE lu.id_usuario = %s
-                """
-        params = [user_id]
-
-        if status:
-            query += " AND lu.status_visualizacao = %s"
-            params.append(status)
-
-        query += " ORDER BY lu.data_atualizacao DESC"
-
-        lista = execute_query(query, params)
-
+        tipo = request.args.get('tipo')
+        status = request.args.get('status') or request.args.get('status_consumo')
+        lista = lista_repository.obter_lista_usuario(user_id, tipo=tipo, status=status)
         return jsonify({'lista': lista or []}), 200
-    except Exception as e:
-        print(f"Erro ao obter lista: {e}")
+    except Exception as exc:
+        print(f"Erro ao obter lista: {exc}")
         return jsonify({'erro': 'Erro ao buscar lista'}), 500
+
+
+@lista_bp.route('/<string:target_user_id>', methods=['GET'])
+@jwt_required()
+def obter_lista_usuario_por_id(target_user_id):
+    """Obter lista de um usuário específico."""
+    user_id = get_jwt_identity()
+    if target_user_id != user_id:
+        return jsonify({'erro': 'Sem permissão para acessar esta lista'}), 403
+    return obter_lista_usuario()
 
 
 @lista_bp.route('/adicionar', methods=['POST'])
 @jwt_required()
-def adicionar_anime_lista():
-    """Adicionar anime à lista - USA PROCEDURE"""
+def adicionar_midia_lista():
+    """Adicionar mídia à lista do usuário."""
     try:
         user_id = get_jwt_identity()
-        data = request.get_json()
+        payload = _normalizar_payload_lista(request.get_json() or {})
+        payload = lista_schema.load(payload)
+        id_midia = payload['id_midia']
+        status = payload['status']
 
-        if not data or not data.get('id_anime'):
-            return jsonify({'erro': 'ID do anime é obrigatório'}), 400
+        if not midia_repository.buscar_por_id(id_midia):
+            return jsonify({'erro': 'Mídia não encontrada'}), 404
 
-        id_anime = data['id_anime']
-        status = data.get('status', 'planejado')
-
-        # Verificar se anime existe
-        check_anime = execute_query("SELECT id_anime FROM animes WHERE id_anime = %s", (id_anime,))
-        if not check_anime:
-            return jsonify({'erro': 'Anime não encontrado'}), 404
-
-        # Usar procedure
-        result = call_procedure('adicionar_anime_lista', [user_id, id_anime, status])
-
+        result = lista_repository.adicionar_midia(user_id, id_midia, status)
         if result and 'mensagem' in result[0]:
             mensagem = result[0]['mensagem']
             if 'já está na lista' in mensagem:
                 return jsonify({'erro': mensagem}), 400
             return jsonify({'mensagem': mensagem}), 201
 
-        return jsonify({'mensagem': 'Anime adicionado à lista!'}), 201
-    except Exception as e:
-        print(f"Erro ao adicionar à lista: {e}")
-        return jsonify({'erro': f'Erro ao adicionar anime: {str(e)}'}), 500
+        return jsonify({'mensagem': 'Mídia adicionada à lista!'}), 201
+    except ValidationError as exc:
+        return jsonify({'erro': 'Payload inválido', 'detalhes': exc.errors}), 400
+    except Exception as exc:
+        print(f"Erro ao adicionar à lista: {exc}")
+        return jsonify({'erro': f'Erro ao adicionar mídia: {exc}'}), 500
 
 
 @lista_bp.route('', methods=['POST'])
 @jwt_required()
-def adicionar_anime_lista_v2():
-    """Adicionar anime à lista (endpoint alternativo sem /adicionar)"""
-    return adicionar_anime_lista()
+def adicionar_midia_lista_v2():
+    """Adicionar mídia à lista sem usar /adicionar."""
+    return adicionar_midia_lista()
 
 
 @lista_bp.route('/<string:lista_id>/progresso', methods=['PUT'])
 @jwt_required()
 def atualizar_progresso(lista_id):
-    """Atualizar progresso - USA PROCEDURE"""
+    """Atualizar progresso de consumo."""
     try:
         user_id = get_jwt_identity()
-        data = request.get_json()
-
-        if not data or 'episodios_assistidos' not in data:
-            return jsonify({'erro': 'Número de episódios é obrigatório'}), 400
-
-        # Verificar permissão
-        check_query = "SELECT id_usuario FROM lista_usuarios WHERE id_lista = %s"
-        result = execute_query(check_query, (lista_id,))
-
-        if not result or result[0]['id_usuario'] != user_id:
+        owner = lista_repository.obter_owner(lista_id)
+        if owner != user_id:
             return jsonify({'erro': 'Item não encontrado ou sem permissão'}), 403
 
-        # Usar procedure
-        result = call_procedure('atualizar_progresso_anime', [
-            lista_id,
-            int(data['episodios_assistidos']),
-            data.get('novo_status', 'assistindo')
-        ])
+        payload = _normalizar_payload_lista(request.get_json() or {})
+        payload = atualizacao_schema.load(payload, partial=True)
 
+        if 'progresso_atual' not in payload:
+            return jsonify({'erro': 'Progresso é obrigatório'}), 400
+
+        status = payload.get('status') or payload.get('status_consumo') or 'planejado'
+        lista_repository.atualizar_progresso(lista_id, int(payload['progresso_atual']), status)
         return jsonify({'mensagem': 'Progresso atualizado com sucesso!'}), 200
-    except Exception as e:
-        print(f"Erro ao atualizar progresso: {e}")
-        return jsonify({'erro': f'Erro ao atualizar: {str(e)}'}), 500
+    except ValidationError as exc:
+        return jsonify({'erro': 'Payload inválido', 'detalhes': exc.errors}), 400
+    except Exception as exc:
+        print(f"Erro ao atualizar progresso: {exc}")
+        return jsonify({'erro': f'Erro ao atualizar: {exc}'}), 500
 
 
 @lista_bp.route('/<string:lista_id>', methods=['PUT'])
 @jwt_required()
 def atualizar_item_lista(lista_id):
-    """Atualizar item da lista"""
+    """Atualizar item da lista."""
     try:
         user_id = get_jwt_identity()
-        data = request.get_json()
-
-        if not data:
-            return jsonify({'erro': 'Dados não fornecidos'}), 400
-
-        # Verificar permissão
-        check_query = "SELECT id_usuario FROM lista_usuarios WHERE id_lista = %s"
-        result = execute_query(check_query, (lista_id,))
-
-        if not result or result[0]['id_usuario'] != user_id:
+        owner = lista_repository.obter_owner(lista_id)
+        if owner != user_id:
             return jsonify({'erro': 'Item não encontrado ou sem permissão'}), 403
 
-        # Se for atualização de episódios, usar procedure
-        if 'episodios_assistidos' in data:
-            result = call_procedure('atualizar_progresso_anime', [
-                lista_id,
-                int(data['episodios_assistidos']),
-                data.get('status_visualizacao', 'assistindo')
-            ])
-            return jsonify({'mensagem': 'Progresso atualizado!'}), 200
+        payload = _normalizar_payload_lista(request.get_json() or {})
+        payload = atualizacao_schema.load(payload, partial=True)
 
-        # Atualização de outros campos
-        fields = []
-        params = []
+        if 'progresso_atual' in payload:
+            status = payload.get('status') or payload.get('status_consumo') or 'planejado'
+            lista_repository.atualizar_progresso(lista_id, int(payload['progresso_atual']), status)
 
-        if 'status_visualizacao' in data:
-            fields.append("status_visualizacao = %s")
-            params.append(data['status_visualizacao'])
+        update_payload = {}
+        if 'status' in payload:
+            update_payload['status_consumo'] = payload['status']
+        if 'status_consumo' in payload:
+            update_payload['status_consumo'] = payload['status_consumo']
+        if 'nota_usuario' in payload:
+            update_payload['nota_usuario'] = payload['nota_usuario']
+        if 'favorito' in payload:
+            update_payload['favorito'] = payload['favorito']
+        if 'comentario' in payload:
+            update_payload['comentario'] = payload['comentario']
+        if 'data_inicio' in payload:
+            update_payload['data_inicio'] = payload['data_inicio']
+        if 'data_conclusao' in payload:
+            update_payload['data_conclusao'] = payload['data_conclusao']
+        if 'progresso_total' in payload:
+            update_payload['progresso_total'] = payload['progresso_total']
 
-        if 'nota_usuario' in data:
-            nota = data['nota_usuario']
-            if nota is not None and nota != '':
-                fields.append("nota_usuario = %s")
-                params.append(float(nota))
-            else:
-                fields.append("nota_usuario = NULL")
-
-        if 'favorito' in data:
-            fields.append("favorito = %s")
-            params.append(bool(data['favorito']))
-
-        if 'comentario' in data:
-            fields.append("comentario = %s")
-            params.append(data['comentario'])
-
-        if not fields:
-            return jsonify({'erro': 'Nenhum campo para atualizar'}), 400
-
-        fields.append("data_atualizacao = NOW()")
-        params.append(lista_id)
-        query = f"UPDATE lista_usuarios SET {', '.join(fields)} WHERE id_lista = %s"
-
-        execute_query(query, params, fetch=False)
+        if update_payload:
+            lista_repository.atualizar_item(lista_id, update_payload)
 
         return jsonify({'mensagem': 'Lista atualizada com sucesso!'}), 200
-    except Exception as e:
-        print(f"Erro ao atualizar lista: {e}")
-        return jsonify({'erro': f'Erro ao atualizar: {str(e)}'}), 500
+    except ValidationError as exc:
+        return jsonify({'erro': 'Payload inválido', 'detalhes': exc.errors}), 400
+    except Exception as exc:
+        print(f"Erro ao atualizar lista: {exc}")
+        return jsonify({'erro': f'Erro ao atualizar: {exc}'}), 500
 
 
 @lista_bp.route('/<string:lista_id>', methods=['DELETE'])
 @jwt_required()
-def remover_anime_lista(lista_id):
-    """Remover anime da lista"""
+def remover_item_lista(lista_id):
+    """Remover item da lista."""
     try:
         user_id = get_jwt_identity()
-        query = "DELETE FROM lista_usuarios WHERE id_lista = %s AND id_usuario = %s"
-        execute_query(query, (lista_id, user_id), fetch=False)
-        return jsonify({'mensagem': 'Anime removido da lista'}), 200
-    except Exception as e:
-        print(f"Erro ao remover da lista: {e}")
-        return jsonify({'erro': 'Erro ao remover anime'}), 500
-
+        lista_repository.remover_item(lista_id, user_id)
+        return jsonify({'mensagem': 'Mídia removida da lista'}), 200
+    except Exception as exc:
+        print(f"Erro ao remover da lista: {exc}")
+        return jsonify({'erro': 'Erro ao remover mídia'}), 500

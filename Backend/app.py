@@ -1,41 +1,38 @@
 """
-AnimeList API - Versão Completamente Refatorada
-Todos os endpoints migrados para blueprints
+MediaList API.
 """
 from flask import Flask, jsonify
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager
 
-# Imports dos módulos refatorados
-from config import JWT_SECRET_KEY, JWT_ACCESS_TOKEN_EXPIRES, token_blocklist
-from database import init_mongodb, get_db_connection
-
-# Importar todos os blueprints
+from config import JWT_ACCESS_TOKEN_EXPIRES, JWT_SECRET_KEY, token_blocklist
+from database import get_db_connection, init_mongodb
 from routes import (
-    auth_bp,
-    usuario_bp,
     animes_bp,
-    lista_bp,
+    auth_bp,
     avaliacoes_bp,
-    noticias_bp,
+    jogos_bp,
+    lista_bp,
+    mangas_bp,
+    midias_bp,
     moderacao_bp,
+    musicas_bp,
+    noticias_bp,
     preferencias_bp,
-    utils_bp
+    usuario_bp,
+    utils_bp,
 )
 
 app = Flask(__name__)
 CORS(app)
 
-# Configurações JWT
 app.config['JWT_SECRET_KEY'] = JWT_SECRET_KEY
 app.config['JWT_ACCESS_TOKEN_EXPIRES'] = JWT_ACCESS_TOKEN_EXPIRES
 
 jwt = JWTManager(app)
 
-# Inicializar MongoDB
 init_mongodb()
 
-# Verificar conexão MySQL
 try:
     mysql_conn = get_db_connection()
     if mysql_conn:
@@ -43,85 +40,58 @@ try:
         print("✅ MySQL conectado com sucesso!")
     else:
         print("⚠️  Aviso: MySQL não conectado")
-        print("   Verifique se o servidor MySQL está rodando na porta 3308")
-except Exception as e:
-    print(f"⚠️  Aviso: Erro ao conectar MySQL - {e}")
-    print("   Verifique as configurações em config.py")
+except Exception as exc:
+    print(f"⚠️  Aviso: Erro ao conectar MySQL - {exc}")
 
-# ============================================
-# REGISTRAR TODOS OS BLUEPRINTS
-# ============================================
-
-# Autenticação e Usuário
 app.register_blueprint(auth_bp, url_prefix='/api/auth')
 app.register_blueprint(usuario_bp, url_prefix='/api/usuario')
 
-# Animes e relacionados
+app.register_blueprint(midias_bp, url_prefix='/api/midias')
 app.register_blueprint(animes_bp, url_prefix='/api/animes')
+app.register_blueprint(mangas_bp, url_prefix='/api/mangas')
+app.register_blueprint(jogos_bp, url_prefix='/api/jogos')
+app.register_blueprint(musicas_bp, url_prefix='/api/musicas')
+
 app.register_blueprint(lista_bp, url_prefix='/api/lista')
 app.register_blueprint(avaliacoes_bp, url_prefix='/api/avaliacoes')
-
-# Conteúdo
 app.register_blueprint(noticias_bp, url_prefix='/api/noticias')
-
-# Administração
 app.register_blueprint(moderacao_bp, url_prefix='/api/moderacao')
 app.register_blueprint(preferencias_bp, url_prefix='/api/preferencias')
-
-# Utilidades (generos, notificações, health, etc)
 app.register_blueprint(utils_bp, url_prefix='/api')
 
-# ============================================
-# JWT CALLBACKS
-# ============================================
 
 @jwt.token_in_blocklist_loader
 def check_if_token_revoked(jwt_header, jwt_payload):
-    """Verificar se token foi revogado"""
+    """Verificar se token foi revogado."""
     return jwt_payload['jti'] in token_blocklist
 
-# ============================================
-# ERROR HANDLERS
-# ============================================
 
 @app.errorhandler(404)
-def not_found(e):
+def not_found(_error):
     return jsonify({'erro': 'Endpoint não encontrado'}), 404
 
+
 @app.errorhandler(500)
-def internal_error(e):
+def internal_error(_error):
     return jsonify({'erro': 'Erro interno do servidor'}), 500
 
+
 @app.errorhandler(401)
-def unauthorized(e):
+def unauthorized(_error):
     return jsonify({'erro': 'Não autorizado'}), 401
 
+
 @app.errorhandler(403)
-def forbidden(e):
+def forbidden(_error):
     return jsonify({'erro': 'Acesso negado'}), 403
 
-# ============================================
-# INICIALIZAÇÃO
-# ============================================
 
 if __name__ == '__main__':
     print("=" * 70)
-    print("🚀 AnimeList API")
+    print("🚀 MediaList API")
     print("=" * 70)
-    print()
-    print("🎯 Recursos SQL:")
-    print("   • Triggers (atualização automática de notas)")
-    print("   • Views (queries complexas pré-definidas)")
-    print("   • Procedures (lógica de negócio no BD)")
-    print("   • Functions (cálculos e validações)")
-    print()
-    print("💾 Bancos de Dados:")
-    print("   • MySQL - Dados relacionais")
-    print("   • MongoDB - Notícias, notificações, preferências")
-    print()
     print("🌐 Servidor: http://localhost:5000")
+    print("💾 Banco relacional: medialist_db")
+    print("🎬 Tipos suportados: animes, mangás, jogos e músicas")
     print("=" * 70)
-    print()
-
     app.run(debug=True, port=5000)
-

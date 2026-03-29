@@ -1,6 +1,29 @@
-version: '3.8'
-
 services:
+  mysql:
+    image: mysql:8.0
+    container_name: mysql-medialist
+    restart: always
+    ports:
+      - "3308:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_ROOT_HOST: "%"
+    command:
+      - --default-authentication-plugin=mysql_native_password
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - "../Banco DDL.sql:/docker-entrypoint-initdb.d/01-medialist.sql:ro"
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 25s
+    networks:
+      - animelist-network
+
   mongodb:
     image: mongo:latest
     container_name: mongodb-animelist
@@ -32,6 +55,7 @@ services:
       - animelist-network
 
 volumes:
+  mysql_data:
   mongodb_data:
 
 networks:

@@ -1,9 +1,17 @@
 import React, { useState } from 'react';
-import { X, Bell, AlertCircle } from 'lucide-react';
+import { AlertCircle, Bell, X } from 'lucide-react';
+
+const labelTipo = {
+    anime: 'anime',
+    manga: 'mangá',
+    jogo: 'jogo',
+    musica: 'música'
+};
 
 const CriarAtualizacaoModal = ({ isOpen, onClose, anime, apiCall, onSuccess }) => {
+    const midia = anime;
     const [formData, setFormData] = useState({
-        tipo: 'novo_episodio',
+        tipo: 'noticia',
         titulo: '',
         descricao: ''
     });
@@ -11,11 +19,11 @@ const CriarAtualizacaoModal = ({ isOpen, onClose, anime, apiCall, onSuccess }) =
     const [error, setError] = useState('');
 
     const tiposAtualizacao = [
-        { value: 'novo_episodio', label: '📺 Novo Episódio' },
-        { value: 'nova_temporada', label: '🎬 Nova Temporada' },
-        { value: 'mudanca_status', label: '🔄 Mudança de Status' },
-        { value: 'noticia', label: '📰 Notícia Geral' },
-        { value: 'outro', label: '📌 Outro' }
+        { value: 'novo_conteudo', label: 'Novo Conteúdo' },
+        { value: 'mudanca_status', label: 'Mudança de Status' },
+        { value: 'lancamento', label: 'Lançamento' },
+        { value: 'noticia', label: 'Notícia Geral' },
+        { value: 'outro', label: 'Outro' }
     ];
 
     const handleSubmit = async (e) => {
@@ -29,42 +37,27 @@ const CriarAtualizacaoModal = ({ isOpen, onClose, anime, apiCall, onSuccess }) =
 
         setLoading(true);
         try {
-            const result = await apiCall(`/animes/${anime.id_anime}/atualizacoes`, {
+            const result = await apiCall(`/midias/${midia.id_midia}/atualizacoes`, {
                 method: 'POST',
                 body: JSON.stringify(formData)
             });
 
             alert(`Atualização criada com sucesso! ${result.notificacoes_enviadas} notificação(ões) enviada(s).`);
-
-            // Resetar formulário
-            setFormData({
-                tipo: 'novo_episodio',
-                titulo: '',
-                descricao: ''
-            });
-
+            setFormData({ tipo: 'noticia', titulo: '', descricao: '' });
             if (onSuccess) onSuccess();
             onClose();
-        } catch (error) {
-            setError(error.message || 'Erro ao criar atualização');
+        } catch (err) {
+            setError(err.message || 'Erro ao criar atualização');
         } finally {
             setLoading(false);
         }
     };
 
-    const handleChange = (e) => {
-        setFormData({
-            ...formData,
-            [e.target.name]: e.target.value
-        });
-    };
-
-    if (!isOpen || !anime) return null;
+    if (!isOpen || !midia) return null;
 
     return (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black bg-opacity-50 p-4">
             <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-                {/* Header */}
                 <div className="bg-gradient-to-r from-purple-600 to-blue-600 text-white p-6 rounded-t-xl">
                     <div className="flex items-start justify-between">
                         <div>
@@ -73,7 +66,7 @@ const CriarAtualizacaoModal = ({ isOpen, onClose, anime, apiCall, onSuccess }) =
                                 <h2 className="text-2xl font-bold">Criar Atualização</h2>
                             </div>
                             <p className="text-purple-100">
-                                {anime.titulo_portugues || anime.titulo_original}
+                                {midia.titulo_portugues || midia.titulo_original}
                             </p>
                         </div>
                         <button
@@ -86,7 +79,6 @@ const CriarAtualizacaoModal = ({ isOpen, onClose, anime, apiCall, onSuccess }) =
                     </div>
                 </div>
 
-                {/* Content */}
                 <form onSubmit={handleSubmit} className="p-6 space-y-6">
                     {error && (
                         <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-start gap-3">
@@ -98,100 +90,72 @@ const CriarAtualizacaoModal = ({ isOpen, onClose, anime, apiCall, onSuccess }) =
                         </div>
                     )}
 
-                    {/* Informação sobre notificações */}
                     <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                         <div className="flex items-start gap-3">
                             <Bell className="text-blue-600 flex-shrink-0 mt-0.5" size={20} />
                             <div>
-                                <p className="font-semibold text-blue-800 mb-1">
-                                    Notificações Automáticas
-                                </p>
+                                <p className="font-semibold text-blue-800 mb-1">Notificações Automáticas</p>
                                 <p className="text-sm text-blue-700">
-                                    Esta atualização será enviada automaticamente para todos os usuários que têm
-                                    este anime na lista com status "assistindo" ou "planejado", ou marcado como favorito.
+                                    A atualização será enviada para usuários que acompanham este {labelTipo[midia.tipo] || 'item'}
+                                    ou o marcaram como favorito.
                                 </p>
                             </div>
                         </div>
                     </div>
 
-                    {/* Tipo de Atualização */}
                     <div>
-                        <label className="block text-sm font-semibold text-gray-700 mb-2">
-                            Tipo de Atualização *
-                        </label>
+                        <label className="block text-sm font-semibold text-gray-700 mb-2">Tipo de Atualização</label>
                         <select
                             name="tipo"
                             value={formData.tipo}
-                            onChange={handleChange}
-                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all"
-                            required
+                            onChange={(e) => setFormData({ ...formData, tipo: e.target.value })}
+                            className="w-full px-4 py-3 border border-gray-300 rounded-lg"
                             disabled={loading}
                         >
                             {tiposAtualizacao.map(tipo => (
-                                <option key={tipo.value} value={tipo.value}>
-                                    {tipo.label}
-                                </option>
+                                <option key={tipo.value} value={tipo.value}>{tipo.label}</option>
                             ))}
                         </select>
                     </div>
 
-                    {/* Título */}
                     <div>
-                        <label className="block text-sm font-semibold text-gray-700 mb-2">
-                            Título da Atualização *
-                        </label>
+                        <label className="block text-sm font-semibold text-gray-700 mb-2">Título da Atualização</label>
                         <input
                             type="text"
-                            name="titulo"
                             value={formData.titulo}
-                            onChange={handleChange}
-                            placeholder="Ex: Episódio 24 já disponível!"
-                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all"
-                            required
+                            onChange={(e) => setFormData({ ...formData, titulo: e.target.value })}
+                            placeholder="Ex: Novo volume já disponível"
+                            className="w-full px-4 py-3 border border-gray-300 rounded-lg"
                             maxLength={200}
                             disabled={loading}
                         />
-                        <p className="text-xs text-gray-500 mt-1">
-                            {formData.titulo.length}/200 caracteres
-                        </p>
                     </div>
 
-                    {/* Descrição */}
                     <div>
-                        <label className="block text-sm font-semibold text-gray-700 mb-2">
-                            Descrição (Opcional)
-                        </label>
+                        <label className="block text-sm font-semibold text-gray-700 mb-2">Descrição</label>
                         <textarea
-                            name="descricao"
                             value={formData.descricao}
-                            onChange={handleChange}
+                            onChange={(e) => setFormData({ ...formData, descricao: e.target.value })}
                             placeholder="Adicione mais detalhes sobre a atualização..."
                             rows={4}
-                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all resize-none"
+                            className="w-full px-4 py-3 border border-gray-300 rounded-lg resize-none"
                             maxLength={500}
                             disabled={loading}
                         />
-                        <p className="text-xs text-gray-500 mt-1">
-                            {formData.descricao.length}/500 caracteres
-                        </p>
                     </div>
 
-                    {/* Preview da Mensagem */}
                     <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
-                        <p className="text-xs font-semibold text-gray-600 mb-2">
-                            PREVIEW DA NOTIFICAÇÃO
-                        </p>
+                        <p className="text-xs font-semibold text-gray-600 mb-2">PREVIEW DA NOTIFICAÇÃO</p>
                         <div className="bg-white rounded-lg p-3 border border-gray-200">
                             <p className="text-sm font-semibold text-gray-800">
                                 {formData.titulo || 'Título da atualização...'}
                             </p>
                             <p className="text-xs text-gray-600 mt-1">
-                                Novidade em anime da sua lista: {anime.titulo_portugues || anime.titulo_original}
+                                Novidade em {labelTipo[midia.tipo] || 'mídia'} da sua lista: {midia.titulo_portugues || midia.titulo_original}
                             </p>
                         </div>
                     </div>
 
-                    {/* Botões */}
                     <div className="flex gap-3 pt-4">
                         <button
                             type="button"
@@ -226,4 +190,3 @@ const CriarAtualizacaoModal = ({ isOpen, onClose, anime, apiCall, onSuccess }) =
 };
 
 export default CriarAtualizacaoModal;
-

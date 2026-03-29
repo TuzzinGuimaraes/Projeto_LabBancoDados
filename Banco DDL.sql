@@ -1,40 +1,43 @@
 -- ============================================
--- SCHEMA COMPLETO - SISTEMA DE GERENCIAMENTO DE ANIMES
--- COM IDs CUSTOMIZADOS (SEM AUTO_INCREMENT)
+-- SCHEMA COMPLETO - MEDIALIST
+-- SISTEMA DE GERENCIAMENTO DE MIDIAS
+-- COM IDs CUSTOMIZADOS (SEM AUTO_INCREMENT NAS ENTIDADES PRINCIPAIS)
 -- ============================================
 
-DROP DATABASE IF EXISTS anime_list_db;
-CREATE DATABASE anime_list_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-USE anime_list_db;
+DROP DATABASE IF EXISTS medialist_db;
+CREATE DATABASE medialist_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+USE medialist_db;
 
 -- ============================================
--- TABELA DE SEQUÊNCIAS (para geração de IDs customizados)
+-- TABELA DE SEQUÊNCIAS
 -- ============================================
 
 CREATE TABLE sequences (
-                           seq_name VARCHAR(50) PRIMARY KEY,
-                           seq_value BIGINT NOT NULL DEFAULT 0,
-                           prefix VARCHAR(10),
-                           description VARCHAR(200)
+    seq_name VARCHAR(50) PRIMARY KEY,
+    seq_value BIGINT NOT NULL DEFAULT 0,
+    prefix VARCHAR(10),
+    description VARCHAR(200)
 ) ENGINE=InnoDB;
 
--- Inserir sequências iniciais
 INSERT INTO sequences (seq_name, seq_value, prefix, description) VALUES
-                                                                     ('usuario_seq', 1000, 'USR', 'Sequência para IDs de usuários'),
-                                                                     ('anime_seq', 10000, 'ANM', 'Sequência para IDs de animes'),
-                                                                     ('lista_seq', 1, 'LST', 'Sequência para lista de usuários'),
-                                                                     ('avaliacao_seq', 1, 'AVL', 'Sequência para avaliações');
+    ('usuario_seq', 1000, 'USR', 'Sequência para IDs de usuários'),
+    ('anime_seq', 10000, 'ANM', 'Sequência para IDs de animes'),
+    ('lista_seq', 1, 'LST', 'Sequência para lista de usuários'),
+    ('avaliacao_seq', 1, 'AVL', 'Sequência para avaliações'),
+    ('midia_seq', 20000, 'MID', 'Sequência para IDs de mídias (central)'),
+    ('jogo_seq', 30000, 'JOG', 'Sequência para IDs de jogos'),
+    ('musica_seq', 40000, 'MUS', 'Sequência para IDs de músicas'),
+    ('manga_seq', 50000, 'MNG', 'Sequência para IDs de mangás');
 
 -- ============================================
--- FUNCTIONS PARA GERAÇÃO DE IDs
+-- FUNCTIONS
 -- ============================================
 
 DELIMITER $$
 
--- Function para obter próximo ID de uma sequência
 CREATE FUNCTION get_next_sequence(p_seq_name VARCHAR(50))
-    RETURNS BIGINT
-    DETERMINISTIC
+RETURNS BIGINT
+DETERMINISTIC
 BEGIN
     DECLARE v_next_val BIGINT;
 
@@ -49,260 +52,299 @@ BEGIN
     RETURN v_next_val;
 END$$
 
--- Function para gerar ID de usuário (formato: USR-YYYYMMDD-XXXXX)
 CREATE FUNCTION gerar_id_usuario()
-    RETURNS VARCHAR(50)
-    DETERMINISTIC
+RETURNS VARCHAR(50)
+DETERMINISTIC
 BEGIN
     DECLARE v_seq BIGINT;
-    DECLARE v_id VARCHAR(50);
     DECLARE v_data VARCHAR(8);
 
     SET v_seq = get_next_sequence('usuario_seq');
     SET v_data = DATE_FORMAT(CURDATE(), '%Y%m%d');
-    SET v_id = CONCAT('USR-', v_data, '-', LPAD(v_seq, 5, '0'));
 
-    RETURN v_id;
+    RETURN CONCAT('USR-', v_data, '-', LPAD(v_seq, 5, '0'));
 END$$
 
--- Function para gerar ID de anime (formato: ANM-TIPO-XXXXX)
-CREATE FUNCTION gerar_id_anime(p_tipo VARCHAR(10))
-    RETURNS VARCHAR(50)
-    DETERMINISTIC
+CREATE FUNCTION gerar_id_midia(p_tipo_midia VARCHAR(10))
+RETURNS VARCHAR(50)
+DETERMINISTIC
 BEGIN
     DECLARE v_seq BIGINT;
-    DECLARE v_id VARCHAR(50);
     DECLARE v_ano VARCHAR(4);
 
-    SET v_seq = get_next_sequence('anime_seq');
+    SET v_seq = get_next_sequence('midia_seq');
     SET v_ano = YEAR(CURDATE());
-    SET v_id = CONCAT('ANM-', UPPER(p_tipo), '-', v_ano, '-', LPAD(v_seq, 5, '0'));
 
-    RETURN v_id;
+    RETURN CONCAT('MID-', UPPER(p_tipo_midia), '-', v_ano, '-', LPAD(v_seq, 5, '0'));
 END$$
 
--- Function para gerar código único de anime baseado no título
-CREATE FUNCTION gerar_codigo_anime(p_titulo VARCHAR(200))
-    RETURNS VARCHAR(20)
-    DETERMINISTIC
+CREATE FUNCTION gerar_codigo_midia(p_titulo VARCHAR(200), p_tipo VARCHAR(5))
+RETURNS VARCHAR(20)
+DETERMINISTIC
 BEGIN
     DECLARE v_codigo VARCHAR(20);
-    DECLARE v_prefixo VARCHAR(10);
-    DECLARE v_contador INT;
-    DECLARE v_existe INT;
+    DECLARE v_prefixo VARCHAR(8);
+    DECLARE v_contador INT DEFAULT 1;
+    DECLARE v_existe INT DEFAULT 0;
     DECLARE v_tentativas INT DEFAULT 0;
-    DECLARE v_max_tentativas INT DEFAULT 1000;
 
-    -- Extrair prefixo de 3 letras do título (removendo espaços, : e -)
-    SET v_prefixo = UPPER(LEFT(REPLACE(REPLACE(REPLACE(p_titulo, ' ', ''), ':', ''), '-', ''), 3));
+    SET v_prefixo = CONCAT(
+        UPPER(p_tipo), '-',
+        UPPER(LEFT(REPLACE(REPLACE(REPLACE(COALESCE(p_titulo, 'MIDIA'), ' ', ''), ':', ''), '-', ''), 3))
+    );
 
-    -- Se o prefixo tiver menos de 3 caracteres, completar com 'X'
-    IF LENGTH(v_prefixo) < 3 THEN
-        SET v_prefixo = RPAD(v_prefixo, 3, 'X');
+    IF LENGTH(v_prefixo) < 6 THEN
+        SET v_prefixo = RPAD(v_prefixo, 6, 'X');
     END IF;
 
-    -- Iniciar contador em 1
-    SET v_contador = 1;
-
-    -- Loop até encontrar um código único
     REPEAT
-        SET v_codigo = CONCAT(v_prefixo, YEAR(CURDATE()), LPAD(v_contador, 4, '0'));
-
-        -- Verificar se o código já existe
-        SELECT COUNT(*) INTO v_existe
-        FROM animes
-        WHERE codigo_anime = v_codigo;
-
--- Se já existe, incrementar contador
+        SET v_codigo = CONCAT(v_prefixo, YEAR(CURDATE()), LPAD(v_contador, 3, '0'));
+        SELECT COUNT(*) INTO v_existe FROM midias WHERE codigo_midia = v_codigo;
         IF v_existe > 0 THEN
             SET v_contador = v_contador + 1;
             SET v_tentativas = v_tentativas + 1;
         END IF;
+    UNTIL v_existe = 0 OR v_tentativas >= 1000
+    END REPEAT;
 
-    UNTIL v_existe = 0 OR v_tentativas >= v_max_tentativas
-        END REPEAT;
-
-    -- Se atingiu o máximo de tentativas, usar sequência global
-    IF v_tentativas >= v_max_tentativas THEN
-        SET v_codigo = CONCAT('ANM', YEAR(CURDATE()), LPAD(get_next_sequence('anime_seq'), 5, '0'));
+    IF v_tentativas >= 1000 THEN
+        SET v_codigo = CONCAT(UPPER(p_tipo), YEAR(CURDATE()), LPAD(get_next_sequence('midia_seq'), 5, '0'));
     END IF;
 
     RETURN v_codigo;
 END$$
 
-
--- Function para gerar UUID customizado
 CREATE FUNCTION gerar_uuid_customizado(p_prefixo VARCHAR(5))
-    RETURNS VARCHAR(50)
-    DETERMINISTIC
+RETURNS VARCHAR(50)
+DETERMINISTIC
 BEGIN
-    DECLARE v_uuid VARCHAR(50);
     DECLARE v_timestamp VARCHAR(20);
     DECLARE v_random VARCHAR(10);
 
     SET v_timestamp = UNIX_TIMESTAMP();
     SET v_random = FLOOR(RAND() * 9999999999);
-    SET v_uuid = CONCAT(p_prefixo, '-', v_timestamp, '-', v_random);
 
-    RETURN v_uuid;
+    RETURN CONCAT(p_prefixo, '-', v_timestamp, '-', v_random);
 END$$
 
 DELIMITER ;
 
 -- ============================================
--- TABELAS PRINCIPAIS
+-- LOOKUPS E TABELAS PRINCIPAIS
 -- ============================================
 
--- Tabela de usuários
+CREATE TABLE tipo_midia (
+    id_tipo TINYINT NOT NULL AUTO_INCREMENT,
+    nome_tipo VARCHAR(20) NOT NULL UNIQUE,
+    label VARCHAR(50) NOT NULL,
+    PRIMARY KEY (id_tipo)
+) ENGINE=InnoDB;
+
+INSERT INTO tipo_midia (nome_tipo, label) VALUES
+    ('anime', 'Anime'),
+    ('manga', 'Mangá'),
+    ('jogo', 'Jogo'),
+    ('musica', 'Música');
+
 CREATE TABLE usuarios (
-                          id_usuario VARCHAR(50) NOT NULL,
-                          codigo_usuario VARCHAR(20) NOT NULL UNIQUE,  -- Código único gerado
-                          nome_completo VARCHAR(100) NOT NULL,
-                          email VARCHAR(100) NOT NULL UNIQUE,
-                          senha_hash VARCHAR(255) NOT NULL,
-                          data_nascimento DATE,
-                          foto_perfil VARCHAR(255),
-                          biografia TEXT,
-                          data_cadastro TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                          ultimo_acesso TIMESTAMP NULL,
-                          ativo BOOLEAN DEFAULT TRUE,
-                          PRIMARY KEY (id_usuario),
-                          INDEX idx_codigo (codigo_usuario),
-                          INDEX idx_email (email),
-                          INDEX idx_ativo (ativo)
+    id_usuario VARCHAR(50) NOT NULL,
+    codigo_usuario VARCHAR(20) NOT NULL UNIQUE,
+    nome_completo VARCHAR(100) NOT NULL,
+    email VARCHAR(100) NOT NULL UNIQUE,
+    senha_hash VARCHAR(255) NOT NULL,
+    data_nascimento DATE,
+    foto_perfil VARCHAR(255),
+    biografia TEXT,
+    data_cadastro TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    ultimo_acesso TIMESTAMP NULL,
+    ativo BOOLEAN DEFAULT TRUE,
+    PRIMARY KEY (id_usuario),
+    INDEX idx_codigo (codigo_usuario),
+    INDEX idx_email (email),
+    INDEX idx_ativo (ativo)
 ) ENGINE=InnoDB;
 
--- Tabela de grupos de usuários
 CREATE TABLE grupos_usuarios (
-                                 id_grupo INT NOT NULL AUTO_INCREMENT,  -- AUTO_INCREMENT: poucos registros fixos (3 grupos)
-                                 nome_grupo VARCHAR(50) NOT NULL UNIQUE,
-                                 descricao TEXT,
-                                 nivel_acesso ENUM('admin', 'moderador', 'usuario') NOT NULL,
-                                 pode_criar BOOLEAN DEFAULT TRUE,
-                                 pode_editar BOOLEAN DEFAULT TRUE,
-                                 pode_deletar BOOLEAN DEFAULT FALSE,
-                                 pode_moderar BOOLEAN DEFAULT FALSE,
-                                 PRIMARY KEY (id_grupo),
-                                 INDEX idx_nivel_acesso (nivel_acesso)
+    id_grupo INT NOT NULL AUTO_INCREMENT,
+    nome_grupo VARCHAR(50) NOT NULL UNIQUE,
+    descricao TEXT,
+    nivel_acesso ENUM('admin', 'moderador', 'usuario') NOT NULL,
+    pode_criar BOOLEAN DEFAULT TRUE,
+    pode_editar BOOLEAN DEFAULT TRUE,
+    pode_deletar BOOLEAN DEFAULT FALSE,
+    pode_moderar BOOLEAN DEFAULT FALSE,
+    PRIMARY KEY (id_grupo),
+    INDEX idx_nivel_acesso (nivel_acesso)
 ) ENGINE=InnoDB AUTO_INCREMENT=1;
 
--- Relacionamento usuários e grupos
 CREATE TABLE usuarios_grupos (
-                                 id_usuario VARCHAR(50) NOT NULL,
-                                 id_grupo INT NOT NULL,
-                                 data_inclusao TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                                 PRIMARY KEY (id_usuario, id_grupo),
-                                 FOREIGN KEY (id_usuario) REFERENCES usuarios(id_usuario) ON DELETE CASCADE,
-                                 FOREIGN KEY (id_grupo) REFERENCES grupos_usuarios(id_grupo) ON DELETE CASCADE
+    id_usuario VARCHAR(50) NOT NULL,
+    id_grupo INT NOT NULL,
+    data_inclusao TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id_usuario, id_grupo),
+    FOREIGN KEY (id_usuario) REFERENCES usuarios(id_usuario) ON DELETE CASCADE,
+    FOREIGN KEY (id_grupo) REFERENCES grupos_usuarios(id_grupo) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
--- Tabela de animes
+CREATE TABLE midias (
+    id_midia VARCHAR(50) NOT NULL,
+    codigo_midia VARCHAR(20) NOT NULL UNIQUE,
+    id_tipo TINYINT NOT NULL,
+    titulo_original VARCHAR(200) NOT NULL,
+    titulo_ingles VARCHAR(200),
+    titulo_portugues VARCHAR(200),
+    sinopse TEXT,
+    data_lancamento DATE,
+    nota_media DECIMAL(3,2) DEFAULT 0.00,
+    total_avaliacoes INT DEFAULT 0,
+    poster_url VARCHAR(255),
+    banner_url VARCHAR(255),
+    data_criacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    data_atualizacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id_midia),
+    FOREIGN KEY (id_tipo) REFERENCES tipo_midia(id_tipo),
+    INDEX idx_tipo (id_tipo),
+    INDEX idx_codigo (codigo_midia),
+    INDEX idx_nota (nota_media),
+    INDEX idx_titulo (titulo_portugues),
+    FULLTEXT idx_busca (titulo_original, titulo_portugues, sinopse)
+) ENGINE=InnoDB;
+
 CREATE TABLE animes (
-                        id_anime VARCHAR(50) NOT NULL,
-                        codigo_anime VARCHAR(20) NOT NULL UNIQUE,  -- Código gerado
-                        titulo_original VARCHAR(200) NOT NULL,
-                        titulo_ingles VARCHAR(200),
-                        titulo_portugues VARCHAR(200),
-                        sinopse TEXT,
-                        data_lancamento DATE,
-                        status_anime ENUM('em_exibicao', 'finalizado', 'aguardando', 'cancelado') DEFAULT 'aguardando',
-                        numero_episodios INT,
-                        duracao_episodio INT COMMENT 'Duração em minutos',
-                        classificacao_etaria VARCHAR(10),
-                        nota_media DECIMAL(3,2) DEFAULT 0.00,
-                        total_avaliacoes INT DEFAULT 0,
-                        poster_url VARCHAR(255),
-                        banner_url VARCHAR(255),
-                        trailer_url VARCHAR(255),
-                        estudio VARCHAR(100),
-                        fonte_original VARCHAR(100) COMMENT 'Manga, Light Novel, Original, etc',
-                        data_criacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        data_atualizacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                        PRIMARY KEY (id_anime),
-                        INDEX idx_codigo (codigo_anime),
-                        INDEX idx_status (status_anime),
-                        INDEX idx_nota (nota_media),
-                        INDEX idx_titulo (titulo_portugues),
-                        FULLTEXT idx_busca (titulo_original, titulo_portugues, sinopse)
+    id_midia VARCHAR(50) NOT NULL,
+    status_anime ENUM('em_exibicao', 'finalizado', 'aguardando', 'cancelado') DEFAULT 'aguardando',
+    numero_episodios INT,
+    duracao_episodio INT COMMENT 'Duração em minutos',
+    classificacao_etaria VARCHAR(10),
+    trailer_url VARCHAR(255),
+    estudio VARCHAR(100),
+    fonte_original VARCHAR(100) COMMENT 'Manga, Light Novel, Original, etc',
+    anilist_id INT NULL UNIQUE,
+    PRIMARY KEY (id_midia),
+    FOREIGN KEY (id_midia) REFERENCES midias(id_midia) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
--- Tabela de gêneros
+CREATE TABLE jogos (
+    id_midia VARCHAR(50) NOT NULL,
+    desenvolvedor VARCHAR(100),
+    publicadora VARCHAR(100),
+    plataformas VARCHAR(200) COMMENT 'Ex: PC, PS5, Xbox, Switch',
+    status_jogo ENUM('lancado', 'em_desenvolvimento', 'cancelado', 'remasterizado') DEFAULT 'lancado',
+    modo_jogo ENUM('single', 'multi', 'ambos') DEFAULT 'ambos',
+    classificacao VARCHAR(20),
+    trailer_url VARCHAR(255),
+    rawg_slug VARCHAR(200) NULL UNIQUE,
+    PRIMARY KEY (id_midia),
+    FOREIGN KEY (id_midia) REFERENCES midias(id_midia) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE mangas (
+    id_midia VARCHAR(50) NOT NULL,
+    status_manga ENUM('em_publicacao', 'finalizado', 'aguardando', 'cancelado', 'hiato') DEFAULT 'aguardando',
+    numero_capitulos INT COMMENT 'Total de capítulos; NULL se em andamento',
+    numero_volumes INT COMMENT 'Total de volumes; NULL se em andamento',
+    autor VARCHAR(200) COMMENT 'Autor(es) do roteiro, separados por vírgula',
+    artista VARCHAR(200) COMMENT 'Artista(s) do desenho',
+    publicadora_original VARCHAR(100),
+    revista VARCHAR(100),
+    demografia ENUM('shounen', 'shoujo', 'seinen', 'josei', 'kodomomuke'),
+    anilist_id INT NULL UNIQUE,
+    PRIMARY KEY (id_midia),
+    FOREIGN KEY (id_midia) REFERENCES midias(id_midia) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE musicas (
+    id_midia VARCHAR(50) NOT NULL,
+    artista VARCHAR(200) NOT NULL,
+    album VARCHAR(200),
+    tipo_lancamento ENUM('album', 'ep', 'single', 'compilacao') DEFAULT 'album',
+    gravadora VARCHAR(100),
+    duracao_total INT COMMENT 'Duração total em segundos',
+    numero_faixas INT,
+    genero_musical VARCHAR(100),
+    musicbrainz_mbid CHAR(36) NULL UNIQUE,
+    PRIMARY KEY (id_midia),
+    FOREIGN KEY (id_midia) REFERENCES midias(id_midia) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
 CREATE TABLE generos (
-                         id_genero INT NOT NULL AUTO_INCREMENT,  -- AUTO_INCREMENT: lista fixa de gêneros (~20 registros)
-                         nome_genero VARCHAR(50) NOT NULL UNIQUE,
-                         descricao TEXT,
-                         PRIMARY KEY (id_genero),
-                         INDEX idx_nome (nome_genero)
+    id_genero INT NOT NULL AUTO_INCREMENT,
+    nome_genero VARCHAR(50) NOT NULL UNIQUE,
+    descricao TEXT,
+    aplicavel_a SET('anime', 'manga', 'jogo', 'musica') DEFAULT 'anime,manga,jogo,musica',
+    PRIMARY KEY (id_genero),
+    INDEX idx_nome (nome_genero)
 ) ENGINE=InnoDB AUTO_INCREMENT=1;
 
--- Relacionamento animes e gêneros
-CREATE TABLE animes_generos (
-                                id_anime VARCHAR(50) NOT NULL,
-                                id_genero INT NOT NULL,
-                                PRIMARY KEY (id_anime, id_genero),
-                                FOREIGN KEY (id_anime) REFERENCES animes(id_anime) ON DELETE CASCADE,
-                                FOREIGN KEY (id_genero) REFERENCES generos(id_genero) ON DELETE CASCADE
+CREATE TABLE midias_generos (
+    id_midia VARCHAR(50) NOT NULL,
+    id_genero INT NOT NULL,
+    PRIMARY KEY (id_midia, id_genero),
+    FOREIGN KEY (id_midia) REFERENCES midias(id_midia) ON DELETE CASCADE,
+    FOREIGN KEY (id_genero) REFERENCES generos(id_genero) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
--- Tabela de lista de usuários (usa sequência customizada)
 CREATE TABLE lista_usuarios (
-                                id_lista VARCHAR(50) NOT NULL,
-                                codigo_lista VARCHAR(50) NOT NULL UNIQUE,  -- Formato: LSTYYYYMMDD-XXXXXX (sequência única)
-                                id_usuario VARCHAR(50) NOT NULL,
-                                id_anime VARCHAR(50) NOT NULL,
-                                status_visualizacao ENUM('assistindo', 'completo', 'planejado', 'pausado', 'abandonado') NOT NULL,
-                                episodios_assistidos INT DEFAULT 0,
-                                nota_usuario DECIMAL(3,2),
-                                favorito BOOLEAN DEFAULT FALSE,
-                                data_inicio DATE,
-                                data_conclusao DATE,
-                                comentario TEXT,
-                                data_adicao TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                                data_atualizacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                                PRIMARY KEY (id_lista),
-                                UNIQUE KEY uk_usuario_anime (id_usuario, id_anime),
-                                FOREIGN KEY (id_usuario) REFERENCES usuarios(id_usuario) ON DELETE CASCADE,
-                                FOREIGN KEY (id_anime) REFERENCES animes(id_anime) ON DELETE CASCADE,
-                                INDEX idx_codigo (codigo_lista),
-                                INDEX idx_status (status_visualizacao),
-                                INDEX idx_favorito (favorito)
+    id_lista VARCHAR(50) NOT NULL,
+    codigo_lista VARCHAR(50) NOT NULL UNIQUE,
+    id_usuario VARCHAR(50) NOT NULL,
+    id_midia VARCHAR(50) NOT NULL,
+    status_consumo ENUM(
+        'assistindo', 'completo', 'planejado', 'pausado', 'abandonado',
+        'lendo', 'lido',
+        'jogando', 'zerado', 'platinado', 'na_fila',
+        'ouvindo', 'ouvido'
+    ) NOT NULL,
+    progresso_atual INT DEFAULT 0,
+    progresso_total INT,
+    nota_usuario DECIMAL(3,2),
+    favorito BOOLEAN DEFAULT FALSE,
+    data_inicio DATE,
+    data_conclusao DATE,
+    comentario TEXT,
+    data_adicao TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    data_atualizacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id_lista),
+    UNIQUE KEY uk_usuario_midia (id_usuario, id_midia),
+    FOREIGN KEY (id_usuario) REFERENCES usuarios(id_usuario) ON DELETE CASCADE,
+    FOREIGN KEY (id_midia) REFERENCES midias(id_midia) ON DELETE CASCADE,
+    INDEX idx_codigo (codigo_lista),
+    INDEX idx_status (status_consumo),
+    INDEX idx_favorito (favorito)
 ) ENGINE=InnoDB;
 
--- Tabela de avaliações
 CREATE TABLE avaliacoes (
-                            id_avaliacao VARCHAR(50) NOT NULL,
-                            codigo_avaliacao VARCHAR(30) NOT NULL UNIQUE,
-                            id_usuario VARCHAR(50) NOT NULL,
-                            id_anime VARCHAR(50) NOT NULL,
-                            nota DECIMAL(3,2) NOT NULL CHECK (nota >= 0 AND nota <= 10),
-                            titulo_avaliacao VARCHAR(200),
-                            texto_avaliacao TEXT,
-                            data_avaliacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                            data_edicao TIMESTAMP NULL,
-                            likes INT DEFAULT 0,
-                            dislikes INT DEFAULT 0,
-                            PRIMARY KEY (id_avaliacao),
-                            UNIQUE KEY uk_usuario_anime_avaliacao (id_usuario, id_anime),
-                            FOREIGN KEY (id_usuario) REFERENCES usuarios(id_usuario) ON DELETE CASCADE,
-                            FOREIGN KEY (id_anime) REFERENCES animes(id_anime) ON DELETE CASCADE,
-                            INDEX idx_codigo (codigo_avaliacao),
-                            INDEX idx_nota (nota),
-                            INDEX idx_data (data_avaliacao)
+    id_avaliacao VARCHAR(50) NOT NULL,
+    codigo_avaliacao VARCHAR(30) NOT NULL UNIQUE,
+    id_usuario VARCHAR(50) NOT NULL,
+    id_midia VARCHAR(50) NOT NULL,
+    nota DECIMAL(3,2) NOT NULL CHECK (nota >= 0 AND nota <= 10),
+    titulo_avaliacao VARCHAR(200),
+    texto_avaliacao TEXT,
+    data_avaliacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    data_edicao TIMESTAMP NULL,
+    likes INT DEFAULT 0,
+    dislikes INT DEFAULT 0,
+    PRIMARY KEY (id_avaliacao),
+    UNIQUE KEY uk_usuario_midia_avaliacao (id_usuario, id_midia),
+    FOREIGN KEY (id_usuario) REFERENCES usuarios(id_usuario) ON DELETE CASCADE,
+    FOREIGN KEY (id_midia) REFERENCES midias(id_midia) ON DELETE CASCADE,
+    INDEX idx_codigo (codigo_avaliacao),
+    INDEX idx_nota (nota),
+    INDEX idx_data (data_avaliacao)
 ) ENGINE=InnoDB;
 
--- Tabela de comentários (AUTO_INCREMENT justificado)
 CREATE TABLE comentarios_avaliacoes (
-                                        id_comentario INT NOT NULL AUTO_INCREMENT,
-                                        id_avaliacao VARCHAR(50) NOT NULL,
-                                        id_usuario VARCHAR(50) NOT NULL,
-                                        texto_comentario TEXT NOT NULL,
-                                        data_comentario TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                                        PRIMARY KEY (id_comentario),
-                                        FOREIGN KEY (id_avaliacao) REFERENCES avaliacoes(id_avaliacao) ON DELETE CASCADE,
-                                        FOREIGN KEY (id_usuario) REFERENCES usuarios(id_usuario) ON DELETE CASCADE,
-                                        INDEX idx_avaliacao (id_avaliacao)
+    id_comentario INT NOT NULL AUTO_INCREMENT,
+    id_avaliacao VARCHAR(50) NOT NULL,
+    id_usuario VARCHAR(50) NOT NULL,
+    texto_comentario TEXT NOT NULL,
+    data_comentario TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id_comentario),
+    FOREIGN KEY (id_avaliacao) REFERENCES avaliacoes(id_avaliacao) ON DELETE CASCADE,
+    FOREIGN KEY (id_usuario) REFERENCES usuarios(id_usuario) ON DELETE CASCADE,
+    INDEX idx_avaliacao (id_avaliacao)
 ) ENGINE=InnoDB;
-
 
 -- ============================================
 -- TRIGGERS
@@ -310,10 +352,9 @@ CREATE TABLE comentarios_avaliacoes (
 
 DELIMITER $$
 
--- Trigger para gerar ID do usuário antes de inserir
 CREATE TRIGGER before_insert_usuario
-    BEFORE INSERT ON usuarios
-    FOR EACH ROW
+BEFORE INSERT ON usuarios
+FOR EACH ROW
 BEGIN
     IF NEW.id_usuario IS NULL OR NEW.id_usuario = '' THEN
         SET NEW.id_usuario = gerar_id_usuario();
@@ -324,24 +365,53 @@ BEGIN
     END IF;
 END$$
 
--- Trigger para gerar ID do anime antes de inserir
-CREATE TRIGGER before_insert_anime
-    BEFORE INSERT ON animes
-    FOR EACH ROW
+CREATE TRIGGER before_insert_midia
+BEFORE INSERT ON midias
+FOR EACH ROW
 BEGIN
-    IF NEW.id_anime IS NULL OR NEW.id_anime = '' THEN
-        SET NEW.id_anime = gerar_id_anime('STD');
+    DECLARE v_tipo_nome VARCHAR(20);
+    DECLARE v_prefixo VARCHAR(5);
+
+    SELECT nome_tipo INTO v_tipo_nome
+    FROM tipo_midia
+    WHERE id_tipo = NEW.id_tipo;
+
+    SET v_prefixo = CASE v_tipo_nome
+        WHEN 'anime' THEN 'ANM'
+        WHEN 'manga' THEN 'MNG'
+        WHEN 'jogo' THEN 'JOG'
+        WHEN 'musica' THEN 'MUS'
+        ELSE 'MID'
+    END;
+
+    IF NEW.id_midia IS NULL OR NEW.id_midia = '' THEN
+        SET NEW.id_midia = gerar_id_midia(v_prefixo);
     END IF;
 
-    IF NEW.codigo_anime IS NULL OR NEW.codigo_anime = '' THEN
-        SET NEW.codigo_anime = gerar_codigo_anime(NEW.titulo_original);
+    IF NEW.codigo_midia IS NULL OR NEW.codigo_midia = '' THEN
+        SET NEW.codigo_midia = gerar_codigo_midia(NEW.titulo_original, v_prefixo);
     END IF;
 END$$
 
--- Trigger para gerar ID da lista antes de inserir
+CREATE TRIGGER before_insert_midia_anime
+BEFORE INSERT ON animes
+FOR EACH ROW
+BEGIN
+    DECLARE v_existe INT;
+
+    SELECT COUNT(*) INTO v_existe
+    FROM midias
+    WHERE id_midia = NEW.id_midia;
+
+    IF v_existe = 0 THEN
+        SIGNAL SQLSTATE '45000'
+            SET MESSAGE_TEXT = 'Insira primeiro na tabela midias antes de inserir em animes.';
+    END IF;
+END$$
+
 CREATE TRIGGER before_insert_lista
-    BEFORE INSERT ON lista_usuarios
-    FOR EACH ROW
+BEFORE INSERT ON lista_usuarios
+FOR EACH ROW
 BEGIN
     DECLARE v_seq BIGINT;
 
@@ -350,80 +420,140 @@ BEGIN
     END IF;
 
     IF NEW.codigo_lista IS NULL OR NEW.codigo_lista = '' THEN
-        -- Gerar código único usando sequência para evitar colisões
         SET v_seq = get_next_sequence('lista_seq');
         SET NEW.codigo_lista = CONCAT('LST', DATE_FORMAT(NOW(), '%Y%m%d'), '-', LPAD(v_seq, 6, '0'));
     END IF;
+
+    IF NEW.progresso_total IS NULL THEN
+        SET NEW.progresso_total = (
+            SELECT CASE tm.nome_tipo
+                WHEN 'anime' THEN a.numero_episodios
+                WHEN 'manga' THEN ma.numero_capitulos
+                WHEN 'musica' THEN mu.numero_faixas
+                ELSE NULL
+            END
+            FROM midias m
+            JOIN tipo_midia tm ON m.id_tipo = tm.id_tipo
+            LEFT JOIN animes a ON a.id_midia = m.id_midia
+            LEFT JOIN mangas ma ON ma.id_midia = m.id_midia
+            LEFT JOIN musicas mu ON mu.id_midia = m.id_midia
+            WHERE m.id_midia = NEW.id_midia
+        );
+    END IF;
 END$$
 
--- Trigger para gerar ID da avaliação antes de inserir
+CREATE TRIGGER validar_progresso_lista
+BEFORE INSERT ON lista_usuarios
+FOR EACH ROW
+BEGIN
+    DECLARE v_total INT;
+    DECLARE v_tipo VARCHAR(20);
+
+    SELECT tm.nome_tipo INTO v_tipo
+    FROM midias m
+    JOIN tipo_midia tm ON m.id_tipo = tm.id_tipo
+    WHERE m.id_midia = NEW.id_midia;
+
+    IF v_tipo = 'anime' THEN
+        SELECT numero_episodios INTO v_total
+        FROM animes
+        WHERE id_midia = NEW.id_midia;
+
+        IF v_total IS NOT NULL AND NEW.progresso_atual > v_total THEN
+            SIGNAL SQLSTATE '45000'
+                SET MESSAGE_TEXT = 'Episódios assistidos não pode ser maior que o total de episódios.';
+        END IF;
+    ELSEIF v_tipo = 'manga' THEN
+        SELECT numero_capitulos INTO v_total
+        FROM mangas
+        WHERE id_midia = NEW.id_midia;
+
+        IF v_total IS NOT NULL AND NEW.progresso_atual > v_total THEN
+            SIGNAL SQLSTATE '45000'
+                SET MESSAGE_TEXT = 'Capítulos lidos não pode ser maior que o total de capítulos.';
+        END IF;
+    ELSEIF v_tipo = 'musica' THEN
+        SELECT numero_faixas INTO v_total
+        FROM musicas
+        WHERE id_midia = NEW.id_midia;
+
+        IF v_total IS NOT NULL AND NEW.progresso_atual > v_total THEN
+            SIGNAL SQLSTATE '45000'
+                SET MESSAGE_TEXT = 'Faixas ouvidas não pode ser maior que o total de faixas.';
+        END IF;
+    END IF;
+END$$
+
 CREATE TRIGGER before_insert_avaliacao
-    BEFORE INSERT ON avaliacoes
-    FOR EACH ROW
+BEFORE INSERT ON avaliacoes
+FOR EACH ROW
 BEGIN
     IF NEW.id_avaliacao IS NULL OR NEW.id_avaliacao = '' THEN
         SET NEW.id_avaliacao = gerar_uuid_customizado('AVL');
     END IF;
 
     IF NEW.codigo_avaliacao IS NULL OR NEW.codigo_avaliacao = '' THEN
-        SET NEW.codigo_avaliacao = CONCAT('AVL', DATE_FORMAT(NOW(), '%Y%m%d'), '-', FLOOR(RAND() * 99999));
+        SET NEW.codigo_avaliacao = CONCAT('AVL', DATE_FORMAT(NOW(), '%Y%m%d'), '-', LPAD(get_next_sequence('avaliacao_seq'), 5, '0'));
     END IF;
 END$$
 
--- Trigger: Atualizar nota média do anime após inserir avaliação
 CREATE TRIGGER atualizar_nota_media_insert
-    AFTER INSERT ON avaliacoes
-    FOR EACH ROW
+AFTER INSERT ON avaliacoes
+FOR EACH ROW
 BEGIN
-    UPDATE animes
+    UPDATE midias
     SET nota_media = (
         SELECT ROUND(AVG(nota), 2)
         FROM avaliacoes
-        WHERE id_anime = NEW.id_anime
+        WHERE id_midia = NEW.id_midia
     ),
-        total_avaliacoes = (
-            SELECT COUNT(*)
-            FROM avaliacoes
-            WHERE id_anime = NEW.id_anime
-        )
-    WHERE id_anime = NEW.id_anime;
+    total_avaliacoes = (
+        SELECT COUNT(*)
+        FROM avaliacoes
+        WHERE id_midia = NEW.id_midia
+    )
+    WHERE id_midia = NEW.id_midia;
 END$$
 
--- Trigger: Atualizar nota média do anime após atualizar avaliação
 CREATE TRIGGER atualizar_nota_media_update
-    AFTER UPDATE ON avaliacoes
-    FOR EACH ROW
+AFTER UPDATE ON avaliacoes
+FOR EACH ROW
 BEGIN
-    UPDATE animes
+    UPDATE midias
     SET nota_media = (
         SELECT ROUND(AVG(nota), 2)
         FROM avaliacoes
-        WHERE id_anime = NEW.id_anime
+        WHERE id_midia = NEW.id_midia
+    ),
+    total_avaliacoes = (
+        SELECT COUNT(*)
+        FROM avaliacoes
+        WHERE id_midia = NEW.id_midia
     )
-    WHERE id_anime = NEW.id_anime;
+    WHERE id_midia = NEW.id_midia;
 END$$
 
--- Trigger: Validar episódios assistidos
-CREATE TRIGGER validar_episodios_assistidos
-    BEFORE INSERT ON lista_usuarios
-    FOR EACH ROW
+CREATE TRIGGER atualizar_nota_media_delete
+AFTER DELETE ON avaliacoes
+FOR EACH ROW
 BEGIN
-    DECLARE v_total_eps INT;
-
-    SELECT numero_episodios INTO v_total_eps
-    FROM animes
-    WHERE id_anime = NEW.id_anime;
-
-    IF v_total_eps IS NOT NULL AND NEW.episodios_assistidos > v_total_eps THEN
-        SIGNAL SQLSTATE '45000'
-            SET MESSAGE_TEXT = 'Número de episódios assistidos não pode ser maior que o total';
-    END IF;
+    UPDATE midias
+    SET nota_media = COALESCE((
+        SELECT ROUND(AVG(nota), 2)
+        FROM avaliacoes
+        WHERE id_midia = OLD.id_midia
+    ), 0.00),
+    total_avaliacoes = (
+        SELECT COUNT(*)
+        FROM avaliacoes
+        WHERE id_midia = OLD.id_midia
+    )
+    WHERE id_midia = OLD.id_midia;
 END$$
 
--- Trigger: Registrar último acesso do usuário
 CREATE TRIGGER registrar_ultimo_acesso
-    BEFORE UPDATE ON usuarios
-    FOR EACH ROW
+BEFORE UPDATE ON usuarios
+FOR EACH ROW
 BEGIN
     IF NEW.ativo = TRUE AND OLD.ativo = TRUE THEN
         SET NEW.ultimo_acesso = CURRENT_TIMESTAMP;
@@ -438,82 +568,97 @@ DELIMITER ;
 
 DELIMITER $$
 
--- Procedure para adicionar anime à lista do usuário
-CREATE PROCEDURE adicionar_anime_lista(
+CREATE PROCEDURE adicionar_midia_lista(
     IN p_id_usuario VARCHAR(50),
-    IN p_id_anime VARCHAR(50),
+    IN p_id_midia VARCHAR(50),
     IN p_status VARCHAR(20)
 )
 BEGIN
     DECLARE v_existe INT;
-    DECLARE v_novo_id VARCHAR(50);
 
     SELECT COUNT(*) INTO v_existe
     FROM lista_usuarios
-    WHERE id_usuario = p_id_usuario AND id_anime = p_id_anime;
+    WHERE id_usuario = p_id_usuario
+      AND id_midia = p_id_midia;
 
     IF v_existe = 0 THEN
-        -- Não gera id_lista e codigo_lista aqui, deixa a trigger fazer isso
-        INSERT INTO lista_usuarios (id_usuario, id_anime, status_visualizacao)
-        VALUES (p_id_usuario, p_id_anime, p_status);
+        INSERT INTO lista_usuarios (id_usuario, id_midia, status_consumo)
+        VALUES (p_id_usuario, p_id_midia, p_status);
 
-        -- Busca o id_lista gerado pela trigger
-        SELECT id_lista INTO v_novo_id
-        FROM lista_usuarios
-        WHERE id_usuario = p_id_usuario AND id_anime = p_id_anime;
-
-        SELECT 'Anime adicionado com sucesso!' AS mensagem, v_novo_id as id_lista;
+        SELECT 'Mídia adicionada com sucesso!' AS mensagem;
     ELSE
-        SELECT 'Anime já está na lista do usuário!' AS mensagem;
+        SELECT 'Mídia já está na lista do usuário!' AS mensagem;
     END IF;
 END$$
 
--- Procedure para atualizar progresso do anime
-CREATE PROCEDURE atualizar_progresso_anime(
+CREATE PROCEDURE atualizar_progresso_midia(
     IN p_id_lista VARCHAR(50),
-    IN p_episodios_assistidos INT,
+    IN p_progresso_atual INT,
     IN p_novo_status VARCHAR(20)
 )
 BEGIN
-    DECLARE v_total_episodios INT;
-    DECLARE v_id_anime VARCHAR(50);
+    DECLARE v_total INT;
+    DECLARE v_id_midia VARCHAR(50);
+    DECLARE v_tipo VARCHAR(20);
 
-    SELECT a.numero_episodios, lu.id_anime INTO v_total_episodios, v_id_anime
+    SELECT lu.id_midia, tm.nome_tipo
+    INTO v_id_midia, v_tipo
     FROM lista_usuarios lu
-             JOIN animes a ON lu.id_anime = a.id_anime
+    JOIN midias m ON lu.id_midia = m.id_midia
+    JOIN tipo_midia tm ON m.id_tipo = tm.id_tipo
     WHERE lu.id_lista = p_id_lista;
 
+    IF v_tipo = 'anime' THEN
+        SELECT numero_episodios INTO v_total FROM animes WHERE id_midia = v_id_midia;
+    ELSEIF v_tipo = 'manga' THEN
+        SELECT numero_capitulos INTO v_total FROM mangas WHERE id_midia = v_id_midia;
+    ELSEIF v_tipo = 'musica' THEN
+        SELECT numero_faixas INTO v_total FROM musicas WHERE id_midia = v_id_midia;
+    ELSE
+        SET v_total = NULL;
+    END IF;
+
     UPDATE lista_usuarios
-    SET episodios_assistidos = p_episodios_assistidos,
-        status_visualizacao = CASE
-                                  WHEN v_total_episodios IS NOT NULL AND p_episodios_assistidos >= v_total_episodios THEN 'completo'
-                                  ELSE p_novo_status
-            END,
+    SET progresso_atual = p_progresso_atual,
+        progresso_total = COALESCE(v_total, progresso_total),
+        status_consumo = CASE
+            WHEN v_total IS NOT NULL AND p_progresso_atual >= v_total THEN
+                CASE v_tipo
+                    WHEN 'anime' THEN 'completo'
+                    WHEN 'manga' THEN 'lido'
+                    WHEN 'musica' THEN 'ouvido'
+                    ELSE p_novo_status
+                END
+            ELSE p_novo_status
+        END,
         data_conclusao = CASE
-                             WHEN v_total_episodios IS NOT NULL AND p_episodios_assistidos >= v_total_episodios THEN CURDATE()
-                             ELSE data_conclusao
-            END
+            WHEN v_total IS NOT NULL AND p_progresso_atual >= v_total THEN CURDATE()
+            ELSE data_conclusao
+        END
     WHERE id_lista = p_id_lista;
 
     SELECT 'Progresso atualizado!' AS mensagem;
 END$$
 
--- Procedure para calcular estatísticas do usuário
 CREATE PROCEDURE obter_estatisticas_usuario(IN p_id_usuario VARCHAR(50))
 BEGIN
     SELECT
-        COUNT(DISTINCT lu.id_anime) AS total_animes,
-        SUM(CASE WHEN lu.status_visualizacao = 'completo' THEN 1 ELSE 0 END) AS animes_completos,
-        SUM(CASE WHEN lu.status_visualizacao = 'assistindo' THEN 1 ELSE 0 END) AS animes_assistindo,
-        SUM(lu.episodios_assistidos) AS total_episodios_assistidos,
+        tm.nome_tipo AS tipo,
+        tm.label AS label,
+        COUNT(DISTINCT lu.id_midia) AS total_midias,
+        SUM(CASE WHEN lu.status_consumo IN ('completo', 'lido', 'zerado', 'platinado', 'ouvido') THEN 1 ELSE 0 END) AS concluidos,
+        SUM(CASE WHEN lu.status_consumo IN ('assistindo', 'lendo', 'jogando', 'ouvindo') THEN 1 ELSE 0 END) AS em_andamento,
+        SUM(COALESCE(lu.progresso_atual, 0)) AS progresso_total_consumido,
         ROUND(AVG(lu.nota_usuario), 2) AS nota_media,
-        COUNT(DISTINCT CASE WHEN lu.favorito = TRUE THEN lu.id_anime END) AS total_favoritos,
-        DATEDIFF(CURDATE(), MIN(lu.data_adicao)) AS dias_desde_primeiro_anime
+        COUNT(DISTINCT CASE WHEN lu.favorito = TRUE THEN lu.id_midia END) AS favoritos
     FROM lista_usuarios lu
-    WHERE lu.id_usuario = p_id_usuario;
+    JOIN midias m ON lu.id_midia = m.id_midia
+    JOIN tipo_midia tm ON m.id_tipo = tm.id_tipo
+    WHERE lu.id_usuario = p_id_usuario
+    GROUP BY tm.id_tipo, tm.nome_tipo, tm.label
+    ORDER BY tm.id_tipo;
 END$$
 
--- Procedure para inserir ou atualizar anime (para script de importação)
 CREATE PROCEDURE inserir_ou_atualizar_anime(
     IN p_titulo_original VARCHAR(200),
     IN p_titulo_ingles VARCHAR(200),
@@ -529,57 +674,362 @@ CREATE PROCEDURE inserir_ou_atualizar_anime(
     IN p_banner_url VARCHAR(255),
     IN p_estudio VARCHAR(100),
     IN p_fonte_original VARCHAR(100),
-    OUT p_id_anime VARCHAR(50),
+    IN p_anilist_id INT,
+    OUT p_id_midia VARCHAR(50),
     OUT p_ja_existia BOOLEAN
 )
 BEGIN
-    DECLARE v_existe VARCHAR(50);
-    DECLARE v_novo_id VARCHAR(50);
-    DECLARE v_novo_codigo VARCHAR(20);
+    DECLARE v_id_tipo TINYINT;
+    DECLARE v_id_midia_encontrada VARCHAR(50);
 
-    SELECT id_anime INTO v_existe
-    FROM animes
-    WHERE titulo_original = p_titulo_original
-    LIMIT 1;
+    SELECT id_tipo INTO v_id_tipo FROM tipo_midia WHERE nome_tipo = 'anime';
 
-    IF v_existe IS NOT NULL THEN
-        UPDATE animes
-        SET
-            titulo_ingles = COALESCE(p_titulo_ingles, titulo_ingles),
+    IF p_anilist_id IS NOT NULL THEN
+        SELECT id_midia INTO v_id_midia_encontrada
+        FROM animes
+        WHERE anilist_id = p_anilist_id
+        LIMIT 1;
+    END IF;
+
+    IF v_id_midia_encontrada IS NULL THEN
+        SELECT id_midia INTO v_id_midia_encontrada
+        FROM midias
+        WHERE titulo_original = p_titulo_original
+          AND id_tipo = v_id_tipo
+        LIMIT 1;
+    END IF;
+
+    IF v_id_midia_encontrada IS NOT NULL THEN
+        UPDATE midias
+        SET titulo_ingles = COALESCE(p_titulo_ingles, titulo_ingles),
             titulo_portugues = COALESCE(p_titulo_portugues, titulo_portugues),
             sinopse = COALESCE(p_sinopse, sinopse),
             data_lancamento = COALESCE(p_data_lancamento, data_lancamento),
-            status_anime = COALESCE(p_status_anime, status_anime),
+            nota_media = COALESCE(p_nota_media, nota_media),
+            poster_url = COALESCE(p_poster_url, poster_url),
+            banner_url = COALESCE(p_banner_url, banner_url)
+        WHERE id_midia = v_id_midia_encontrada;
+
+        UPDATE animes
+        SET status_anime = COALESCE(p_status_anime, status_anime),
             numero_episodios = COALESCE(p_numero_episodios, numero_episodios),
             duracao_episodio = COALESCE(p_duracao_episodio, duracao_episodio),
             classificacao_etaria = COALESCE(p_classificacao_etaria, classificacao_etaria),
-            nota_media = COALESCE(p_nota_media, nota_media),
-            poster_url = COALESCE(p_poster_url, poster_url),
-            banner_url = COALESCE(p_banner_url, banner_url),
             estudio = COALESCE(p_estudio, estudio),
             fonte_original = COALESCE(p_fonte_original, fonte_original),
-            data_atualizacao = NOW()
-        WHERE id_anime = v_existe;
+            anilist_id = COALESCE(p_anilist_id, anilist_id)
+        WHERE id_midia = v_id_midia_encontrada;
 
-        SET p_id_anime = v_existe;
+        SET p_id_midia = v_id_midia_encontrada;
         SET p_ja_existia = TRUE;
     ELSE
-        SET v_novo_id = gerar_id_anime('IMP');
-        SET v_novo_codigo = gerar_codigo_anime(p_titulo_original);
+        INSERT INTO midias (
+            id_tipo, titulo_original, titulo_ingles, titulo_portugues, sinopse,
+            data_lancamento, nota_media, poster_url, banner_url
+        ) VALUES (
+            v_id_tipo, p_titulo_original, p_titulo_ingles, p_titulo_portugues, p_sinopse,
+            p_data_lancamento, COALESCE(p_nota_media, 0.00), p_poster_url, p_banner_url
+        );
+
+        SET p_id_midia = (
+            SELECT id_midia
+            FROM midias
+            WHERE titulo_original = p_titulo_original
+              AND id_tipo = v_id_tipo
+            ORDER BY data_criacao DESC
+            LIMIT 1
+        );
 
         INSERT INTO animes (
-            id_anime, codigo_anime, titulo_original, titulo_ingles, titulo_portugues, sinopse,
-            data_lancamento, status_anime, numero_episodios, duracao_episodio,
-            classificacao_etaria, nota_media, poster_url, banner_url,
-            estudio, fonte_original
+            id_midia, status_anime, numero_episodios, duracao_episodio,
+            classificacao_etaria, estudio, fonte_original, anilist_id
         ) VALUES (
-                     v_novo_id, v_novo_codigo, p_titulo_original, p_titulo_ingles, p_titulo_portugues, p_sinopse,
-                     p_data_lancamento, p_status_anime, p_numero_episodios, p_duracao_episodio,
-                     p_classificacao_etaria, p_nota_media, p_poster_url, p_banner_url,
-                     p_estudio, p_fonte_original
-                 );
+            p_id_midia, COALESCE(p_status_anime, 'aguardando'), p_numero_episodios, p_duracao_episodio,
+            p_classificacao_etaria, p_estudio, p_fonte_original, p_anilist_id
+        );
 
-        SET p_id_anime = v_novo_id;
+        SET p_ja_existia = FALSE;
+    END IF;
+END$$
+
+CREATE PROCEDURE inserir_ou_atualizar_manga(
+    IN p_titulo_original VARCHAR(200),
+    IN p_titulo_ingles VARCHAR(200),
+    IN p_titulo_portugues VARCHAR(200),
+    IN p_sinopse TEXT,
+    IN p_data_lancamento DATE,
+    IN p_nota_media DECIMAL(3,2),
+    IN p_poster_url VARCHAR(255),
+    IN p_banner_url VARCHAR(255),
+    IN p_status_manga VARCHAR(20),
+    IN p_numero_capitulos INT,
+    IN p_numero_volumes INT,
+    IN p_autor VARCHAR(200),
+    IN p_artista VARCHAR(200),
+    IN p_publicadora VARCHAR(100),
+    IN p_revista VARCHAR(100),
+    IN p_demografia VARCHAR(20),
+    IN p_anilist_id INT,
+    OUT p_id_midia VARCHAR(50),
+    OUT p_ja_existia BOOLEAN
+)
+BEGIN
+    DECLARE v_id_tipo TINYINT;
+    DECLARE v_id_midia_encontrada VARCHAR(50);
+
+    SELECT id_tipo INTO v_id_tipo FROM tipo_midia WHERE nome_tipo = 'manga';
+
+    IF p_anilist_id IS NOT NULL THEN
+        SELECT id_midia INTO v_id_midia_encontrada
+        FROM mangas
+        WHERE anilist_id = p_anilist_id
+        LIMIT 1;
+    END IF;
+
+    IF v_id_midia_encontrada IS NULL THEN
+        SELECT id_midia INTO v_id_midia_encontrada
+        FROM midias
+        WHERE titulo_original = p_titulo_original
+          AND id_tipo = v_id_tipo
+        LIMIT 1;
+    END IF;
+
+    IF v_id_midia_encontrada IS NOT NULL THEN
+        UPDATE midias
+        SET titulo_ingles = COALESCE(p_titulo_ingles, titulo_ingles),
+            titulo_portugues = COALESCE(p_titulo_portugues, titulo_portugues),
+            sinopse = COALESCE(p_sinopse, sinopse),
+            data_lancamento = COALESCE(p_data_lancamento, data_lancamento),
+            nota_media = COALESCE(p_nota_media, nota_media),
+            poster_url = COALESCE(p_poster_url, poster_url),
+            banner_url = COALESCE(p_banner_url, banner_url)
+        WHERE id_midia = v_id_midia_encontrada;
+
+        UPDATE mangas
+        SET status_manga = COALESCE(p_status_manga, status_manga),
+            numero_capitulos = COALESCE(p_numero_capitulos, numero_capitulos),
+            numero_volumes = COALESCE(p_numero_volumes, numero_volumes),
+            autor = COALESCE(p_autor, autor),
+            artista = COALESCE(p_artista, artista),
+            publicadora_original = COALESCE(p_publicadora, publicadora_original),
+            revista = COALESCE(p_revista, revista),
+            demografia = COALESCE(p_demografia, demografia),
+            anilist_id = COALESCE(p_anilist_id, anilist_id)
+        WHERE id_midia = v_id_midia_encontrada;
+
+        SET p_id_midia = v_id_midia_encontrada;
+        SET p_ja_existia = TRUE;
+    ELSE
+        INSERT INTO midias (
+            id_tipo, titulo_original, titulo_ingles, titulo_portugues, sinopse,
+            data_lancamento, nota_media, poster_url, banner_url
+        ) VALUES (
+            v_id_tipo, p_titulo_original, p_titulo_ingles, p_titulo_portugues, p_sinopse,
+            p_data_lancamento, COALESCE(p_nota_media, 0.00), p_poster_url, p_banner_url
+        );
+
+        SET p_id_midia = (
+            SELECT id_midia
+            FROM midias
+            WHERE titulo_original = p_titulo_original
+              AND id_tipo = v_id_tipo
+            ORDER BY data_criacao DESC
+            LIMIT 1
+        );
+
+        INSERT INTO mangas (
+            id_midia, status_manga, numero_capitulos, numero_volumes,
+            autor, artista, publicadora_original, revista, demografia, anilist_id
+        ) VALUES (
+            p_id_midia, COALESCE(p_status_manga, 'aguardando'), p_numero_capitulos, p_numero_volumes,
+            p_autor, p_artista, p_publicadora, p_revista, p_demografia, p_anilist_id
+        );
+
+        SET p_ja_existia = FALSE;
+    END IF;
+END$$
+
+CREATE PROCEDURE inserir_ou_atualizar_jogo(
+    IN p_titulo_original VARCHAR(200),
+    IN p_titulo_portugues VARCHAR(200),
+    IN p_sinopse TEXT,
+    IN p_data_lancamento DATE,
+    IN p_nota_media DECIMAL(3,2),
+    IN p_poster_url VARCHAR(255),
+    IN p_banner_url VARCHAR(255),
+    IN p_desenvolvedor VARCHAR(100),
+    IN p_publicadora VARCHAR(100),
+    IN p_plataformas VARCHAR(200),
+    IN p_status_jogo VARCHAR(20),
+    IN p_modo_jogo VARCHAR(10),
+    IN p_classificacao VARCHAR(20),
+    IN p_trailer_url VARCHAR(255),
+    IN p_rawg_slug VARCHAR(200),
+    OUT p_id_midia VARCHAR(50),
+    OUT p_ja_existia BOOLEAN
+)
+BEGIN
+    DECLARE v_id_tipo TINYINT;
+    DECLARE v_id_midia_encontrada VARCHAR(50);
+
+    SELECT id_tipo INTO v_id_tipo FROM tipo_midia WHERE nome_tipo = 'jogo';
+
+    IF p_rawg_slug IS NOT NULL AND p_rawg_slug <> '' THEN
+        SELECT id_midia INTO v_id_midia_encontrada
+        FROM jogos
+        WHERE rawg_slug = p_rawg_slug
+        LIMIT 1;
+    END IF;
+
+    IF v_id_midia_encontrada IS NULL THEN
+        SELECT id_midia INTO v_id_midia_encontrada
+        FROM midias
+        WHERE titulo_original = p_titulo_original
+          AND id_tipo = v_id_tipo
+        LIMIT 1;
+    END IF;
+
+    IF v_id_midia_encontrada IS NOT NULL THEN
+        UPDATE midias
+        SET titulo_portugues = COALESCE(p_titulo_portugues, titulo_portugues),
+            sinopse = COALESCE(p_sinopse, sinopse),
+            data_lancamento = COALESCE(p_data_lancamento, data_lancamento),
+            nota_media = COALESCE(p_nota_media, nota_media),
+            poster_url = COALESCE(p_poster_url, poster_url),
+            banner_url = COALESCE(p_banner_url, banner_url)
+        WHERE id_midia = v_id_midia_encontrada;
+
+        UPDATE jogos
+        SET desenvolvedor = COALESCE(p_desenvolvedor, desenvolvedor),
+            publicadora = COALESCE(p_publicadora, publicadora),
+            plataformas = COALESCE(p_plataformas, plataformas),
+            status_jogo = COALESCE(p_status_jogo, status_jogo),
+            modo_jogo = COALESCE(p_modo_jogo, modo_jogo),
+            classificacao = COALESCE(p_classificacao, classificacao),
+            trailer_url = COALESCE(p_trailer_url, trailer_url),
+            rawg_slug = COALESCE(p_rawg_slug, rawg_slug)
+        WHERE id_midia = v_id_midia_encontrada;
+
+        SET p_id_midia = v_id_midia_encontrada;
+        SET p_ja_existia = TRUE;
+    ELSE
+        INSERT INTO midias (
+            id_tipo, titulo_original, titulo_portugues, sinopse, data_lancamento,
+            nota_media, poster_url, banner_url
+        ) VALUES (
+            v_id_tipo, p_titulo_original, COALESCE(p_titulo_portugues, p_titulo_original), p_sinopse, p_data_lancamento,
+            COALESCE(p_nota_media, 0.00), p_poster_url, p_banner_url
+        );
+
+        SET p_id_midia = (
+            SELECT id_midia
+            FROM midias
+            WHERE titulo_original = p_titulo_original
+              AND id_tipo = v_id_tipo
+            ORDER BY data_criacao DESC
+            LIMIT 1
+        );
+
+        INSERT INTO jogos (
+            id_midia, desenvolvedor, publicadora, plataformas,
+            status_jogo, modo_jogo, classificacao, trailer_url, rawg_slug
+        ) VALUES (
+            p_id_midia, p_desenvolvedor, p_publicadora, p_plataformas,
+            COALESCE(p_status_jogo, 'lancado'), COALESCE(p_modo_jogo, 'ambos'),
+            p_classificacao, p_trailer_url, p_rawg_slug
+        );
+
+        SET p_ja_existia = FALSE;
+    END IF;
+END$$
+
+CREATE PROCEDURE inserir_ou_atualizar_musica(
+    IN p_titulo_original VARCHAR(200),
+    IN p_titulo_portugues VARCHAR(200),
+    IN p_sinopse TEXT,
+    IN p_data_lancamento DATE,
+    IN p_poster_url VARCHAR(255),
+    IN p_banner_url VARCHAR(255),
+    IN p_artista VARCHAR(200),
+    IN p_album VARCHAR(200),
+    IN p_tipo_lancamento VARCHAR(20),
+    IN p_gravadora VARCHAR(100),
+    IN p_duracao_total INT,
+    IN p_numero_faixas INT,
+    IN p_genero_musical VARCHAR(100),
+    IN p_musicbrainz_mbid CHAR(36),
+    OUT p_id_midia VARCHAR(50),
+    OUT p_ja_existia BOOLEAN
+)
+BEGIN
+    DECLARE v_id_tipo TINYINT;
+    DECLARE v_id_midia_encontrada VARCHAR(50);
+
+    SELECT id_tipo INTO v_id_tipo FROM tipo_midia WHERE nome_tipo = 'musica';
+
+    IF p_musicbrainz_mbid IS NOT NULL AND p_musicbrainz_mbid <> '' THEN
+        SELECT id_midia INTO v_id_midia_encontrada
+        FROM musicas
+        WHERE musicbrainz_mbid = p_musicbrainz_mbid
+        LIMIT 1;
+    END IF;
+
+    IF v_id_midia_encontrada IS NULL THEN
+        SELECT m.id_midia INTO v_id_midia_encontrada
+        FROM midias m
+        JOIN musicas mu ON mu.id_midia = m.id_midia
+        WHERE m.titulo_original = p_titulo_original
+          AND mu.artista = p_artista
+        LIMIT 1;
+    END IF;
+
+    IF v_id_midia_encontrada IS NOT NULL THEN
+        UPDATE midias
+        SET titulo_portugues = COALESCE(p_titulo_portugues, titulo_portugues),
+            sinopse = COALESCE(p_sinopse, sinopse),
+            data_lancamento = COALESCE(p_data_lancamento, data_lancamento),
+            poster_url = COALESCE(p_poster_url, poster_url),
+            banner_url = COALESCE(p_banner_url, banner_url)
+        WHERE id_midia = v_id_midia_encontrada;
+
+        UPDATE musicas
+        SET album = COALESCE(p_album, album),
+            tipo_lancamento = COALESCE(p_tipo_lancamento, tipo_lancamento),
+            gravadora = COALESCE(p_gravadora, gravadora),
+            duracao_total = COALESCE(p_duracao_total, duracao_total),
+            numero_faixas = COALESCE(p_numero_faixas, numero_faixas),
+            genero_musical = COALESCE(p_genero_musical, genero_musical),
+            musicbrainz_mbid = COALESCE(p_musicbrainz_mbid, musicbrainz_mbid)
+        WHERE id_midia = v_id_midia_encontrada;
+
+        SET p_id_midia = v_id_midia_encontrada;
+        SET p_ja_existia = TRUE;
+    ELSE
+        INSERT INTO midias (
+            id_tipo, titulo_original, titulo_portugues, sinopse, data_lancamento,
+            poster_url, banner_url
+        ) VALUES (
+            v_id_tipo, p_titulo_original, COALESCE(p_titulo_portugues, p_titulo_original), p_sinopse, p_data_lancamento,
+            p_poster_url, p_banner_url
+        );
+
+        SET p_id_midia = (
+            SELECT id_midia
+            FROM midias
+            WHERE titulo_original = p_titulo_original
+              AND id_tipo = v_id_tipo
+            ORDER BY data_criacao DESC
+            LIMIT 1
+        );
+
+        INSERT INTO musicas (
+            id_midia, artista, album, tipo_lancamento, gravadora,
+            duracao_total, numero_faixas, genero_musical, musicbrainz_mbid
+        ) VALUES (
+            p_id_midia, p_artista, p_album, COALESCE(p_tipo_lancamento, 'album'), p_gravadora,
+            p_duracao_total, p_numero_faixas, p_genero_musical, p_musicbrainz_mbid
+        );
+
         SET p_ja_existia = FALSE;
     END IF;
 END$$
@@ -590,48 +1040,54 @@ DELIMITER ;
 -- VIEWS
 -- ============================================
 
-CREATE VIEW vw_animes_populares AS
+CREATE VIEW vw_midias_populares AS
 SELECT
-    a.id_anime,
-    a.codigo_anime,
-    a.titulo_portugues,
-    a.poster_url,
-    a.nota_media,
+    m.id_midia,
+    m.codigo_midia,
+    tm.nome_tipo AS tipo,
+    tm.label AS tipo_label,
+    m.titulo_original,
+    m.titulo_portugues,
+    m.poster_url,
+    m.nota_media,
     COUNT(DISTINCT lu.id_usuario) AS total_usuarios,
-    SUM(CASE WHEN lu.status_visualizacao = 'completo' THEN 1 ELSE 0 END) AS usuarios_completaram,
+    SUM(CASE WHEN lu.status_consumo IN ('completo', 'lido', 'zerado', 'platinado', 'ouvido') THEN 1 ELSE 0 END) AS usuarios_concluiram,
     SUM(CASE WHEN lu.favorito = TRUE THEN 1 ELSE 0 END) AS total_favoritos,
     GROUP_CONCAT(DISTINCT g.nome_genero ORDER BY g.nome_genero SEPARATOR ', ') AS generos
-FROM animes a
-         LEFT JOIN lista_usuarios lu ON a.id_anime = lu.id_anime
-         LEFT JOIN animes_generos ag ON a.id_anime = ag.id_anime
-         LEFT JOIN generos g ON ag.id_genero = g.id_genero
-GROUP BY a.id_anime, a.codigo_anime, a.titulo_portugues, a.poster_url, a.nota_media
+FROM midias m
+JOIN tipo_midia tm ON m.id_tipo = tm.id_tipo
+LEFT JOIN lista_usuarios lu ON m.id_midia = lu.id_midia
+LEFT JOIN midias_generos mg ON m.id_midia = mg.id_midia
+LEFT JOIN generos g ON mg.id_genero = g.id_genero
+GROUP BY m.id_midia, m.codigo_midia, tm.nome_tipo, tm.label, m.titulo_original, m.titulo_portugues, m.poster_url, m.nota_media
 HAVING total_usuarios > 0
-ORDER BY total_usuarios DESC, nota_media DESC;
+ORDER BY total_usuarios DESC, m.nota_media DESC;
 
 CREATE VIEW vw_animes_temporada_atual AS
 SELECT
-    a.id_anime,
-    a.codigo_anime,
-    a.titulo_portugues,
-    a.sinopse,
-    a.poster_url,
-    a.banner_url,
-    a.nota_media,
+    m.id_midia,
+    m.codigo_midia,
+    m.titulo_original,
+    m.titulo_portugues,
+    m.sinopse,
+    m.poster_url,
+    m.banner_url,
+    m.nota_media,
     a.status_anime,
-    a.data_lancamento,
+    m.data_lancamento,
     GROUP_CONCAT(DISTINCT g.nome_genero ORDER BY g.nome_genero SEPARATOR ', ') AS generos,
     COUNT(DISTINCT lu.id_usuario) AS total_usuarios
-FROM animes a
-         LEFT JOIN animes_generos ag ON a.id_anime = ag.id_anime
-         LEFT JOIN generos g ON ag.id_genero = g.id_genero
-         LEFT JOIN lista_usuarios lu ON a.id_anime = lu.id_anime
+FROM midias m
+JOIN animes a ON m.id_midia = a.id_midia
+LEFT JOIN midias_generos mg ON m.id_midia = mg.id_midia
+LEFT JOIN generos g ON mg.id_genero = g.id_genero
+LEFT JOIN lista_usuarios lu ON m.id_midia = lu.id_midia
 WHERE a.status_anime = 'em_exibicao'
-  AND QUARTER(a.data_lancamento) = QUARTER(CURDATE())
-  AND YEAR(a.data_lancamento) = YEAR(CURDATE())
-GROUP BY a.id_anime, a.codigo_anime, a.titulo_portugues, a.sinopse, a.poster_url,
-         a.banner_url, a.nota_media, a.status_anime, a.data_lancamento
-ORDER BY a.nota_media DESC, total_usuarios DESC;
+  AND QUARTER(m.data_lancamento) = QUARTER(CURDATE())
+  AND YEAR(m.data_lancamento) = YEAR(CURDATE())
+GROUP BY m.id_midia, m.codigo_midia, m.titulo_original, m.titulo_portugues, m.sinopse,
+         m.poster_url, m.banner_url, m.nota_media, a.status_anime, m.data_lancamento
+ORDER BY m.nota_media DESC, total_usuarios DESC;
 
 CREATE VIEW vw_perfil_usuario AS
 SELECT
@@ -642,71 +1098,199 @@ SELECT
     u.foto_perfil,
     u.biografia,
     u.data_cadastro,
-    COUNT(DISTINCT lu.id_anime) AS total_animes,
-    SUM(CASE WHEN lu.status_visualizacao = 'completo' THEN 1 ELSE 0 END) AS animes_completos,
-    SUM(lu.episodios_assistidos) AS episodios_assistidos,
+    COUNT(DISTINCT lu.id_midia) AS total_midias,
+    COUNT(DISTINCT CASE WHEN tm.nome_tipo = 'anime' THEN lu.id_midia END) AS total_animes,
+    COUNT(DISTINCT CASE WHEN tm.nome_tipo = 'manga' THEN lu.id_midia END) AS total_mangas,
+    COUNT(DISTINCT CASE WHEN tm.nome_tipo = 'jogo' THEN lu.id_midia END) AS total_jogos,
+    COUNT(DISTINCT CASE WHEN tm.nome_tipo = 'musica' THEN lu.id_midia END) AS total_musicas,
     ROUND(AVG(lu.nota_usuario), 2) AS nota_media_usuario,
-    COUNT(DISTINCT CASE WHEN lu.favorito = TRUE THEN lu.id_anime END) AS total_favoritos,
+    COUNT(DISTINCT CASE WHEN lu.favorito = TRUE THEN lu.id_midia END) AS total_favoritos,
     GROUP_CONCAT(DISTINCT gu.nome_grupo SEPARATOR ', ') AS grupos
 FROM usuarios u
-         LEFT JOIN lista_usuarios lu ON u.id_usuario = lu.id_usuario
-         LEFT JOIN usuarios_grupos ug ON u.id_usuario = ug.id_usuario
-         LEFT JOIN grupos_usuarios gu ON ug.id_grupo = gu.id_grupo
-GROUP BY u.id_usuario, u.codigo_usuario, u.nome_completo, u.email, u.foto_perfil,
-         u.biografia, u.data_cadastro;
+LEFT JOIN lista_usuarios lu ON u.id_usuario = lu.id_usuario
+LEFT JOIN midias m ON lu.id_midia = m.id_midia
+LEFT JOIN tipo_midia tm ON m.id_tipo = tm.id_tipo
+LEFT JOIN usuarios_grupos ug ON u.id_usuario = ug.id_usuario
+LEFT JOIN grupos_usuarios gu ON ug.id_grupo = gu.id_grupo
+GROUP BY u.id_usuario, u.codigo_usuario, u.nome_completo, u.email, u.foto_perfil, u.biografia, u.data_cadastro;
 
 -- ============================================
 -- ÍNDICES ADICIONAIS
 -- ============================================
 
-CREATE INDEX idx_lista_status_usuario ON lista_usuarios(id_usuario, status_visualizacao);
-CREATE INDEX idx_avaliacoes_anime_nota ON avaliacoes(id_anime, nota);
-CREATE INDEX idx_animes_data_lancamento ON animes(data_lancamento);
+CREATE INDEX idx_lista_status_usuario ON lista_usuarios(id_usuario, status_consumo);
+CREATE INDEX idx_avaliacoes_midia_nota ON avaliacoes(id_midia, nota);
+CREATE INDEX idx_midias_data_lancamento ON midias(data_lancamento);
+CREATE INDEX idx_jogos_plataformas ON jogos(plataformas);
+CREATE INDEX idx_mangas_autor ON mangas(autor);
+CREATE INDEX idx_musicas_artista ON musicas(artista);
 
 -- ============================================
 -- DADOS INICIAIS
 -- ============================================
 
--- Inserir grupos de usuários (AUTO_INCREMENT justificado)
 INSERT INTO grupos_usuarios (nome_grupo, descricao, nivel_acesso, pode_criar, pode_editar, pode_deletar, pode_moderar) VALUES
-                                                                                                                           ('Administradores', 'Acesso total ao sistema', 'admin', TRUE, TRUE, TRUE, TRUE),
-                                                                                                                           ('Moderadores', 'Pode moderar conteúdo', 'moderador', TRUE, TRUE, FALSE, TRUE),
-                                                                                                                           ('Usuários', 'Usuários regulares', 'usuario', FALSE, FALSE, FALSE, FALSE);
+    ('Administradores', 'Acesso total ao sistema', 'admin', TRUE, TRUE, TRUE, TRUE),
+    ('Moderadores', 'Pode moderar conteúdo', 'moderador', TRUE, TRUE, FALSE, TRUE),
+    ('Usuários', 'Usuários regulares', 'usuario', FALSE, FALSE, FALSE, FALSE);
 
--- Inserir gêneros (AUTO_INCREMENT justificado)
-INSERT INTO generos (nome_genero, descricao) VALUES
-                                                 ('Ação', 'Animes com cenas de ação e combate'),
-                                                 ('Aventura', 'Jornadas e explorações'),
-                                                 ('Comédia', 'Animes humorísticos'),
-                                                 ('Drama', 'Histórias dramáticas'),
-                                                 ('Fantasia', 'Elementos fantásticos e mágicos'),
-                                                 ('Ficção Científica', 'Tecnologia e futurismo'),
-                                                 ('Romance', 'Histórias de amor'),
-                                                 ('Slice of Life', 'Cotidiano e vida real'),
-                                                 ('Sobrenatural', 'Elementos sobrenaturais'),
-                                                 ('Mistério', 'Histórias de mistério e suspense'),
-                                                 ('Terror', 'Animes de horror'),
-                                                 ('Esportes', 'Competições esportivas'),
-                                                 ('Mecha', 'Robôs gigantes'),
-                                                 ('Shounen', 'Público jovem masculino'),
-                                                 ('Shoujo', 'Público jovem feminino'),
-                                                 ('Seinen', 'Público adulto masculino'),
-                                                 ('Josei', 'Público adulto feminino'),
-                                                 ('Isekai', 'Transportado para outro mundo'),
-                                                 ('Escola', 'Ambiente escolar'),
-                                                 ('Música', 'Focado em música');
+INSERT INTO generos (nome_genero, descricao, aplicavel_a) VALUES
+    ('Ação', 'Cenas de ação e combate', 'anime,manga,jogo'),
+    ('Aventura', 'Jornadas e explorações', 'anime,manga,jogo'),
+    ('Comédia', 'Obras humorísticas', 'anime,manga,jogo'),
+    ('Drama', 'Histórias dramáticas', 'anime,manga,jogo,musica'),
+    ('Fantasia', 'Elementos fantásticos e mágicos', 'anime,manga,jogo'),
+    ('Ficção Científica', 'Tecnologia e futurismo', 'anime,manga,jogo,musica'),
+    ('Romance', 'Histórias de amor', 'anime,manga'),
+    ('Slice of Life', 'Cotidiano e vida real', 'anime,manga'),
+    ('Sobrenatural', 'Elementos sobrenaturais', 'anime,manga'),
+    ('Mistério', 'Histórias de mistério e suspense', 'anime,manga,jogo'),
+    ('Terror', 'Horror e suspense', 'anime,manga,jogo'),
+    ('Esportes', 'Competições esportivas', 'anime,manga,jogo'),
+    ('Mecha', 'Robôs gigantes', 'anime,manga'),
+    ('Shounen', 'Público jovem masculino', 'anime,manga'),
+    ('Shoujo', 'Público jovem feminino', 'anime,manga'),
+    ('Seinen', 'Público adulto masculino', 'anime,manga'),
+    ('Josei', 'Público adulto feminino', 'anime,manga'),
+    ('Isekai', 'Transportado para outro mundo', 'anime,manga'),
+    ('Escola', 'Ambiente escolar', 'anime,manga'),
+    ('Música', 'Obras centradas em música', 'anime,manga'),
+    ('RPG', 'Role-Playing Game', 'jogo'),
+    ('FPS', 'First-Person Shooter', 'jogo'),
+    ('Estratégia', 'Jogos de estratégia em tempo real ou turnos', 'jogo'),
+    ('Plataforma', 'Jogos de plataforma 2D/3D', 'jogo'),
+    ('Battle Royale', 'Últimos a sobreviver vencem', 'jogo'),
+    ('Simulação', 'Simuladores de vida, corrida e afins', 'jogo'),
+    ('Puzzle', 'Quebra-cabeças e raciocínio', 'jogo'),
+    ('Survival', 'Sobrevivência em mundo aberto', 'jogo'),
+    ('MOBA', 'Multiplayer Online Battle Arena', 'jogo'),
+    ('Rock', 'Gênero musical rock', 'musica'),
+    ('Pop', 'Música pop', 'musica'),
+    ('Hip-Hop', 'Hip-Hop e Rap', 'musica'),
+    ('Metal', 'Heavy Metal e subgêneros', 'musica'),
+    ('Jazz', 'Jazz e Blues', 'musica'),
+    ('Eletrônica', 'Música eletrônica e EDM', 'musica'),
+    ('Clássica', 'Música clássica e erudita', 'musica'),
+    ('Indie', 'Música independente', 'musica'),
+    ('Samba', 'Samba brasileiro', 'musica'),
+    ('Forró', 'Forró e música nordestina', 'musica');
 
--- Inserir alguns animes de exemplo (triggers gerarão IDs automaticamente)
-INSERT INTO animes (titulo_original, titulo_portugues, titulo_ingles, sinopse, data_lancamento, status_anime, numero_episodios, duracao_episodio, classificacao_etaria, estudio, fonte_original) VALUES
-                                                                                                                                                                                                     ('Shingeki no Kyojin', 'Attack on Titan', 'Attack on Titan', 'A humanidade vive protegida por muralhas gigantes, defendendo-se de titãs comedores de humanos.', '2013-04-07', 'finalizado', 75, 24, '16', 'Wit Studio', 'Manga'),
-                                                                                                                                                                                                     ('Fullmetal Alchemist: Brotherhood', 'Fullmetal Alchemist: Brotherhood', 'Fullmetal Alchemist: Brotherhood', 'Dois irmãos buscam a Pedra Filosofal após um experimento de alquimia fracassado.', '2009-04-05', 'finalizado', 64, 24, '14', 'Bones', 'Manga'),
-                                                                                                                                                                                                     ('Kimetsu no Yaiba', 'Demon Slayer', 'Demon Slayer', 'Um jovem se torna caçador de demônios para salvar sua irmã transformada em oni.', '2019-04-06', 'em_exibicao', 26, 24, '16', 'ufotable', 'Manga'),
-                                                                                                                                                                                                     ('Steins;Gate', 'Steins;Gate', 'Steins;Gate', 'Um grupo de amigos cria acidentalmente uma máquina do tempo funcional.', '2011-04-06', 'finalizado', 24, 24, '14', 'White Fox', 'Visual Novel'),
-                                                                                                                                                                                                     ('Death Note', 'Death Note', 'Death Note', 'Um estudante encontra um caderno que mata qualquer pessoa cujo nome seja escrito nele.', '2006-10-04', 'finalizado', 37, 24, '16', 'Madhouse', 'Manga');
+INSERT INTO midias (id_tipo, titulo_original, titulo_ingles, titulo_portugues, sinopse, data_lancamento, nota_media, poster_url, banner_url)
+VALUES (
+    (SELECT id_tipo FROM tipo_midia WHERE nome_tipo = 'anime'),
+    'Shingeki no Kyojin',
+    'Attack on Titan',
+    'Attack on Titan',
+    'A humanidade vive protegida por muralhas gigantes, defendendo-se de titãs comedores de humanos.',
+    '2013-04-07',
+    9.10,
+    'https://example.com/shingeki.jpg',
+    'https://example.com/shingeki-banner.jpg'
+);
 
-# UTILIZANDO '%' POR CONTA DO DOCKER
-CREATE USER IF NOT EXISTS 'anime_app_user'@'%' IDENTIFIED BY 'AnimeList@2025!Secure';
+INSERT INTO animes (id_midia, status_anime, numero_episodios, duracao_episodio, classificacao_etaria, trailer_url, estudio, fonte_original)
+SELECT id_midia, 'finalizado', 75, 24, '16', 'https://youtube.com/watch?v=MGRm4IzK1SQ', 'Wit Studio', 'Manga'
+FROM midias
+WHERE titulo_original = 'Shingeki no Kyojin'
+ORDER BY data_criacao DESC
+LIMIT 1;
 
-GRANT ALL PRIVILEGES ON anime_list_db.* TO 'anime_app_user'@'%';
+INSERT INTO midias (id_tipo, titulo_original, titulo_portugues, sinopse, data_lancamento, nota_media, poster_url)
+VALUES (
+    (SELECT id_tipo FROM tipo_midia WHERE nome_tipo = 'jogo'),
+    'The Last of Us Part II',
+    'The Last of Us Part II',
+    'Ellie embarca em uma jornada brutal de vingança num mundo pós-apocalíptico.',
+    '2020-06-19',
+    9.30,
+    'https://example.com/tlou2.jpg'
+);
 
+INSERT INTO jogos (id_midia, desenvolvedor, publicadora, plataformas, status_jogo, modo_jogo, classificacao, rawg_slug)
+SELECT id_midia, 'Naughty Dog', 'Sony Interactive Entertainment', 'PS4, PS5', 'lancado', 'single', 'ESRB: M', 'the-last-of-us-part-ii'
+FROM midias
+WHERE titulo_original = 'The Last of Us Part II'
+ORDER BY data_criacao DESC
+LIMIT 1;
+
+INSERT INTO midias (id_tipo, titulo_original, titulo_portugues, sinopse, data_lancamento, nota_media, poster_url)
+VALUES (
+    (SELECT id_tipo FROM tipo_midia WHERE nome_tipo = 'musica'),
+    'Currents',
+    'Currents',
+    'Quinto álbum de estúdio da banda australiana Tame Impala.',
+    '2015-07-17',
+    8.70,
+    'https://example.com/currents.jpg'
+);
+
+INSERT INTO musicas (id_midia, artista, album, tipo_lancamento, gravadora, numero_faixas, duracao_total, genero_musical, musicbrainz_mbid)
+SELECT id_midia, 'Tame Impala', 'Currents', 'album', 'Modular Recordings', 13, 3109, 'Rock', '11111111-1111-1111-1111-111111111111'
+FROM midias
+WHERE titulo_original = 'Currents'
+ORDER BY data_criacao DESC
+LIMIT 1;
+
+INSERT INTO midias (id_tipo, titulo_original, titulo_ingles, titulo_portugues, sinopse, data_lancamento, nota_media, poster_url)
+VALUES (
+    (SELECT id_tipo FROM tipo_midia WHERE nome_tipo = 'manga'),
+    'Berserk',
+    'Berserk',
+    'Berserk',
+    'Guts, um mercenário solitário, busca vingança contra o deus demoníaco Griffith.',
+    '1989-08-25',
+    9.40,
+    'https://example.com/berserk.jpg'
+);
+
+INSERT INTO mangas (id_midia, status_manga, numero_capitulos, numero_volumes, autor, artista, publicadora_original, revista, demografia, anilist_id)
+SELECT id_midia, 'em_publicacao', 374, 41, 'Kentaro Miura', 'Kentaro Miura', 'Hakusensha', 'Young Animal', 'seinen', 5001
+FROM midias
+WHERE titulo_original = 'Berserk'
+ORDER BY data_criacao DESC
+LIMIT 1;
+
+INSERT INTO midias_generos (id_midia, id_genero)
+SELECT m.id_midia, g.id_genero
+FROM midias m
+JOIN generos g
+WHERE (m.titulo_original = 'Shingeki no Kyojin' AND g.nome_genero IN ('Ação', 'Drama', 'Fantasia'))
+   OR (m.titulo_original = 'Berserk' AND g.nome_genero IN ('Ação', 'Fantasia', 'Seinen'))
+   OR (m.titulo_original = 'The Last of Us Part II' AND g.nome_genero IN ('Ação', 'Aventura', 'Survival'))
+   OR (m.titulo_original = 'Currents' AND g.nome_genero IN ('Rock', 'Indie'));
+
+-- ============================================
+-- SCRIPT DE MIGRAÇÃO (REFERÊNCIA)
+-- ============================================
+-- START TRANSACTION;
+-- RENAME TABLE animes TO animes_old;
+-- RENAME TABLE animes_generos TO animes_generos_old;
+-- INSERT INTO midias (
+--   id_midia, codigo_midia, id_tipo, titulo_original, titulo_ingles, titulo_portugues,
+--   sinopse, data_lancamento, nota_media, total_avaliacoes, poster_url, banner_url,
+--   data_criacao, data_atualizacao
+-- )
+-- SELECT
+--   id_anime, codigo_anime, (SELECT id_tipo FROM tipo_midia WHERE nome_tipo = 'anime'),
+--   titulo_original, titulo_ingles, titulo_portugues, sinopse, data_lancamento,
+--   nota_media, total_avaliacoes, poster_url, banner_url, data_criacao, data_atualizacao
+-- FROM animes_old;
+-- INSERT INTO animes (
+--   id_midia, status_anime, numero_episodios, duracao_episodio,
+--   classificacao_etaria, trailer_url, estudio, fonte_original
+-- )
+-- SELECT
+--   id_anime, status_anime, numero_episodios, duracao_episodio,
+--   classificacao_etaria, trailer_url, estudio, fonte_original
+-- FROM animes_old;
+-- INSERT INTO midias_generos (id_midia, id_genero)
+-- SELECT id_anime, id_genero FROM animes_generos_old;
+-- COMMIT;
+
+-- ============================================
+-- USUÁRIO DE APLICAÇÃO
+-- ============================================
+
+CREATE USER IF NOT EXISTS 'media_app_user'@'%' IDENTIFIED BY 'MediaList@2025!Secure';
+GRANT ALL PRIVILEGES ON medialist_db.* TO 'media_app_user'@'%';
 FLUSH PRIVILEGES;

@@ -101,9 +101,9 @@ const LoginForm = ({ onLogin, onRegistro }) => {
             <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md">
                 <div className="text-center mb-8">
                     <h1 className="text-4xl font-bold bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent mb-2">
-                        AnimeList
+                        MediaList
                     </h1>
-                    <p className="text-gray-600">Gerencie seus animes favoritos</p>
+                    <p className="text-gray-600">Gerencie animes, mangás, jogos e músicas</p>
                 </div>
 
                 <form onSubmit={handleSubmit} className="space-y-4">

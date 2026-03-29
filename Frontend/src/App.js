@@ -1,100 +1,119 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Star, TrendingUp } from 'lucide-react';
 
-
-// Components
-import LoginForm from './components/LoginForm';
-import Header from './components/Header';
-import SearchBar from './components/SearchBar';
-import AnimeCard from './components/AnimeCard';
-import MinhaListaTab from './components/MinhaListaTab';
-import EstatisticasTab from './components/EstatisticasTab';
-import NoticiasTab from './components/NoticiasTab';
 import AdminTab from './components/AdminTab';
-import EditAnimeModal from './components/EditAnimeModal';
-import CreateNoticiaModal from './components/CreateNoticiaModal';
-import AvaliacaoModal from './components/AvaliacaoModal';
+import AnimeCard from './components/AnimeCard';
 import AnimeDetalhesModal from './components/AnimeDetalhesModal';
+import AvaliacaoModal from './components/AvaliacaoModal';
+import CreateNoticiaModal from './components/CreateNoticiaModal';
 import CriarAtualizacaoModal from './components/CriarAtualizacaoModal';
+import EditAnimeModal from './components/EditAnimeModal';
+import EstatisticasTab from './components/EstatisticasTab';
+import Header from './components/Header';
 import LoadingSpinner from './components/LoadingSpinner';
+import LoginForm from './components/LoginForm';
+import MinhaListaTab from './components/MinhaListaTab';
+import NoticiasTab from './components/NoticiasTab';
+import SearchBar from './components/SearchBar';
 
-// Configuração da API
 const API_URL = 'http://localhost:5000/api';
+
+const MEDIA_CONFIG = {
+    anime: {
+        label: 'Animes',
+        singular: 'anime',
+        searchPlaceholder: 'Buscar animes por título ou sinopse...',
+        defaultStatus: 'planejado'
+    },
+    manga: {
+        label: 'Mangás',
+        singular: 'mangá',
+        searchPlaceholder: 'Buscar mangás por título, autor ou demografia...',
+        defaultStatus: 'planejado'
+    },
+    jogo: {
+        label: 'Jogos',
+        singular: 'jogo',
+        searchPlaceholder: 'Buscar jogos por título ou plataforma...',
+        defaultStatus: 'na_fila'
+    },
+    musica: {
+        label: 'Músicas',
+        singular: 'música',
+        searchPlaceholder: 'Buscar álbuns, singles ou artistas...',
+        defaultStatus: 'planejado'
+    }
+};
 
 function App() {
     const [user, setUser] = useState(null);
     const [permissions, setPermissions] = useState(null);
     const [activeTab, setActiveTab] = useState('home');
-    const [animes, setAnimes] = useState([]);
+    const [activeMediaType, setActiveMediaType] = useState('anime');
+    const [midias, setMidias] = useState([]);
     const [minhaLista, setMinhaLista] = useState([]);
     const [notificacoes, setNotificacoes] = useState([]);
     const [showMobileMenu, setShowMobileMenu] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
     const [loading, setLoading] = useState(false);
-    const [estatisticas, setEstatisticas] = useState(null);
+    const [estatisticas, setEstatisticas] = useState([]);
+    const [estatisticasResumo, setEstatisticasResumo] = useState(null);
     const [noticias, setNoticias] = useState([]);
 
-    // Estados de administração
     const [usuarios, setUsuarios] = useState([]);
     const [avaliacoesModeracao, setAvaliacoesModeracao] = useState([]);
 
-    // Estado para modal de edição
     const [editModalOpen, setEditModalOpen] = useState(false);
-    const [animeToEdit, setAnimeToEdit] = useState(null);
+    const [midiaToEdit, setMidiaToEdit] = useState(null);
 
-    // Estado para modal de criar notícia
     const [createNoticiaModalOpen, setCreateNoticiaModalOpen] = useState(false);
 
-    // Estado para modal de avaliação
     const [avaliacaoModalOpen, setAvaliacaoModalOpen] = useState(false);
-    const [animeToAvaliar, setAnimeToAvaliar] = useState(null);
+    const [midiaToAvaliar, setMidiaToAvaliar] = useState(null);
 
-    // Estado para modal de detalhes do anime
     const [detalhesModalOpen, setDetalhesModalOpen] = useState(false);
-    const [animeDetalhes, setAnimeDetalhes] = useState(null);
+    const [midiaDetalhes, setMidiaDetalhes] = useState(null);
 
-    // Estado para modal de criar atualização
     const [atualizacaoModalOpen, setAtualizacaoModalOpen] = useState(false);
-    const [animeParaAtualizar, setAnimeParaAtualizar] = useState(null);
+    const [midiaParaAtualizar, setMidiaParaAtualizar] = useState(null);
 
-    // Função de logout (sem dependências para evitar loops)
     const handleLogout = useCallback(async () => {
         const token = localStorage.getItem('token');
-        
-        // Tentar revogar o token no backend
+
         if (token) {
             try {
                 await fetch(`${API_URL}/auth/logout`, {
                     method: 'POST',
                     headers: {
-                        'Authorization': `Bearer ${token}`,
+                        Authorization: `Bearer ${token}`,
                         'Content-Type': 'application/json'
                     }
                 });
             } catch (error) {
                 console.error('Erro ao revogar token:', error);
-                // Continua com o logout mesmo se a revogação falhar
             }
         }
 
-        // Limpar dados locais
         localStorage.removeItem('token');
         localStorage.removeItem('user');
         localStorage.removeItem('permissions');
         setUser(null);
         setPermissions(null);
         setMinhaLista([]);
+        setMidias([]);
         setNotificacoes([]);
-        setEstatisticas(null);
+        setEstatisticas([]);
+        setEstatisticasResumo(null);
+        setNoticias([]);
         setActiveTab('home');
+        setActiveMediaType('anime');
     }, []);
 
-    // Funções de API
     const apiCall = useCallback(async (endpoint, options = {}) => {
         const token = localStorage.getItem('token');
         const headers = {
             'Content-Type': 'application/json',
-            ...(token && { 'Authorization': `Bearer ${token}` })
+            ...(token && { Authorization: `Bearer ${token}` })
         };
 
         try {
@@ -103,21 +122,16 @@ function App() {
                 headers: { ...headers, ...options.headers }
             });
 
-            // Verifica se a resposta é JSON antes de tentar fazer parse
             const contentType = response.headers.get('content-type');
-            let data;
-            
+            let data = {};
+
             if (contentType && contentType.includes('application/json')) {
                 data = await response.json();
-            } else {
-                data = { erro: 'Resposta inválida do servidor' };
             }
 
-            // Token inválido, expirado ou revogado - fazer logout automático
             if (response.status === 401 || response.status === 422) {
-                console.warn('Token inválido ou expirado. Fazendo logout automático...');
                 await handleLogout();
-                throw new Error('Sessão expirada. Por favor, faça login novamente.');
+                throw new Error('Sessão expirada. Faça login novamente.');
             }
 
             if (!response.ok) {
@@ -126,64 +140,48 @@ function App() {
 
             return data;
         } catch (error) {
-            // Se for erro de rede ou outro erro não relacionado a autenticação
             if (error.message.includes('Failed to fetch')) {
-                console.error('Erro de conexão com a API:', error);
-                throw new Error('Erro de conexão com o servidor. Verifique sua conexão.');
+                throw new Error('Erro de conexão com o servidor.');
             }
-            
-            console.error('Erro na API:', error);
             throw error;
         }
     }, [handleLogout]);
 
-    const carregarDados = useCallback(async () => {
+    const carregarDados = useCallback(async (tipo = activeMediaType, busca = searchTerm) => {
+        if (!localStorage.getItem('token')) return;
+
         setLoading(true);
         try {
-            const promises = [
-                apiCall('/animes?por_pagina=500&ordem=nota_media'), // Aumentar limite para pegar todos
-                apiCall('/lista'),
-                apiCall('/notificacoes?nao_lidas=true'),
-                apiCall('/generos'),
-            ];
-
-            const token = localStorage.getItem('token');
-            if (token) {
-                promises.push(apiCall('/usuario/estatisticas'));
-                promises.push(apiCall('/noticias?limite=10'));
+            const query = new URLSearchParams({
+                tipo,
+                por_pagina: '200',
+                ordem: 'nota_media'
+            });
+            if (busca && busca.length >= 2) {
+                query.set('busca', busca);
             }
 
-            const results = await Promise.all(promises.map(p => p.catch(() => null)));
+            const resultados = await Promise.all([
+                apiCall(`/midias?${query.toString()}`).catch(() => null),
+                apiCall('/lista').catch(() => null),
+                apiCall('/notificacoes?nao_lidas=true').catch(() => null),
+                apiCall(`/generos?tipo=${tipo}`).catch(() => null),
+                apiCall('/usuario/estatisticas').catch(() => null),
+                apiCall('/noticias?limite=10').catch(() => null)
+            ]);
 
-            setAnimes(results[0]?.animes || []);
-            setMinhaLista(results[1]?.lista || []);
-            setNotificacoes(results[2]?.notificacoes || []);
-
-            if (results[4]) setEstatisticas(results[4]?.estatisticas);
-            if (results[5]) setNoticias(results[5]?.noticias || []);
+            setMidias(resultados[0]?.midias || []);
+            setMinhaLista(resultados[1]?.lista || []);
+            setNotificacoes(resultados[2]?.notificacoes || []);
+            setEstatisticas(resultados[4]?.estatisticas || []);
+            setEstatisticasResumo(resultados[4]?.resumo || null);
+            setNoticias(resultados[5]?.noticias || []);
         } catch (error) {
             console.error('Erro ao carregar dados:', error);
+        } finally {
+            setLoading(false);
         }
-        setLoading(false);
-    }, [apiCall]); // eslint-disable-line react-hooks/exhaustive-deps
-
-    // Função para buscar animes no backend com debounce
-    const buscarAnimesBackend = useCallback(async (termo) => {
-        if (!termo || termo.length < 2) {
-            // Se não há termo, recarrega todos os animes
-            carregarDados();
-            return;
-        }
-
-        setLoading(true);
-        try {
-            const data = await apiCall(`/animes?busca=${encodeURIComponent(termo)}&por_pagina=500`);
-            setAnimes(data?.animes || []);
-        } catch (error) {
-            console.error('Erro ao buscar animes:', error);
-        }
-        setLoading(false);
-    }, [apiCall, carregarDados]);
+    }, [apiCall, activeMediaType, searchTerm]);
 
     useEffect(() => {
         const token = localStorage.getItem('token');
@@ -191,41 +189,29 @@ function App() {
         const userPermissions = localStorage.getItem('permissions');
 
         if (token && userData) {
-            // Validar token fazendo uma requisição ao backend
             const validateToken = async () => {
                 try {
                     await apiCall('/auth/me');
-                    // Token válido, carregar dados do usuário
                     setUser(JSON.parse(userData));
                     if (userPermissions) {
                         setPermissions(JSON.parse(userPermissions));
                     }
-                    carregarDados();
                 } catch (error) {
-                    // Token inválido - handleLogout já foi chamado pelo apiCall
                     console.warn('Token inválido na inicialização');
                 }
             };
-            
+
             validateToken();
         }
-    }, [apiCall, carregarDados]);
+    }, [apiCall]);
 
-    // Carregar notícias quando a aba de notícias for selecionada
     useEffect(() => {
-        const carregarNoticias = async () => {
-            if (activeTab === 'noticias' && noticias.length === 0) {
-                try {
-                    const data = await apiCall('/noticias?limite=10');
-                    setNoticias(data?.noticias || []);
-                } catch (error) {
-                    console.error('Erro ao carregar notícias:', error);
-                }
-            }
-        };
-
-        carregarNoticias();
-    }, [activeTab, apiCall, noticias.length]);
+        if (!user) return;
+        const timer = setTimeout(() => {
+            carregarDados(activeMediaType, searchTerm);
+        }, 350);
+        return () => clearTimeout(timer);
+    }, [user, activeMediaType, searchTerm, carregarDados]);
 
     const handleLogin = async (email, senha) => {
         try {
@@ -234,13 +220,18 @@ function App() {
                 body: JSON.stringify({ email, senha })
             });
 
+            const mergedPermissions = {
+                ...data.usuario.permissoes,
+                nivel_acesso: data.usuario.nivel_acesso,
+                grupos: data.usuario.grupos
+            };
+
             localStorage.setItem('token', data.access_token);
             localStorage.setItem('user', JSON.stringify(data.usuario));
-            localStorage.setItem('permissions', JSON.stringify(data.usuario.permissoes));
+            localStorage.setItem('permissions', JSON.stringify(mergedPermissions));
 
             setUser(data.usuario);
-            setPermissions(data.usuario.permissoes);
-            carregarDados();
+            setPermissions(mergedPermissions);
             return { success: true };
         } catch (error) {
             return { success: false, error: error.message };
@@ -253,25 +244,24 @@ function App() {
                 method: 'POST',
                 body: JSON.stringify(formData)
             });
-
             return await handleLogin(formData.email, formData.senha);
         } catch (error) {
             return { success: false, error: error.message };
         }
     };
 
-
-    const adicionarAnimeLista = async (animeId, status = 'planejado') => {
+    const adicionarMidiaLista = async (midiaId, tipo) => {
         try {
+            const status = MEDIA_CONFIG[tipo]?.defaultStatus || 'planejado';
             await apiCall('/lista/adicionar', {
                 method: 'POST',
-                body: JSON.stringify({ id_anime: animeId, status })
+                body: JSON.stringify({ id_midia: midiaId, status })
             });
 
-            carregarDados();
-            alert('Anime adicionado à sua lista!');
+            await carregarDados(activeMediaType, searchTerm);
+            alert('Mídia adicionada à sua lista!');
         } catch (error) {
-            alert('Erro: ' + error.message);
+            alert(`Erro: ${error.message}`);
         }
     };
 
@@ -281,132 +271,110 @@ function App() {
                 method: 'PUT',
                 body: JSON.stringify(dados)
             });
-
-            carregarDados();
+            await carregarDados(activeMediaType, searchTerm);
         } catch (error) {
-            alert('Erro ao atualizar: ' + error.message);
+            alert(`Erro ao atualizar: ${error.message}`);
         }
     };
 
     const removerItemLista = async (listaId) => {
-        if (!window.confirm('Deseja remover este anime da sua lista?')) return;
+        if (!window.confirm('Deseja remover esta mídia da sua lista?')) return;
 
         try {
-            await apiCall(`/lista/${listaId}`, {
-                method: 'DELETE'
-            });
-
-            carregarDados();
-            alert('Anime removido da lista!');
+            await apiCall(`/lista/${listaId}`, { method: 'DELETE' });
+            await carregarDados(activeMediaType, searchTerm);
+            alert('Mídia removida da lista!');
         } catch (error) {
-            alert('Erro ao remover: ' + error.message);
+            alert(`Erro ao remover: ${error.message}`);
         }
     };
 
     const marcarNotificacoesLidas = async () => {
         try {
-            await apiCall('/notificacoes/marcar-todas-lidas', {
-                method: 'PUT'
-            });
+            await apiCall('/notificacoes/marcar-todas-lidas', { method: 'PUT' });
             setNotificacoes([]);
         } catch (error) {
             console.error('Erro ao marcar notificações:', error);
         }
     };
 
-    // Funções de administração
     const carregarUsuarios = useCallback(async () => {
         try {
             const data = await apiCall('/moderacao/usuarios');
             setUsuarios(data.usuarios || []);
         } catch (error) {
-            alert('Erro ao carregar usuários: ' + error.message);
+            alert(`Erro ao carregar usuários: ${error.message}`);
         }
-    }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [apiCall]);
 
     const alterarStatusUsuario = useCallback(async (userId, ativar) => {
         try {
             const endpoint = ativar ? 'ativar' : 'desativar';
-            await apiCall(`/moderacao/usuarios/${userId}/${endpoint}`, {
-                method: 'PUT'
-            });
-            carregarUsuarios();
+            await apiCall(`/moderacao/usuarios/${userId}/${endpoint}`, { method: 'PUT' });
+            await carregarUsuarios();
             alert(`Usuário ${ativar ? 'ativado' : 'desativado'} com sucesso!`);
         } catch (error) {
-            alert('Erro: ' + error.message);
+            alert(`Erro: ${error.message}`);
         }
-    }, [carregarUsuarios]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [apiCall, carregarUsuarios]);
 
     const carregarAvaliacoesModeracao = useCallback(async () => {
         try {
             const data = await apiCall('/moderacao/avaliacoes');
             setAvaliacoesModeracao(data.avaliacoes || []);
         } catch (error) {
-            alert('Erro ao carregar avaliações: ' + error.message);
+            alert(`Erro ao carregar avaliações: ${error.message}`);
         }
-    }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [apiCall]);
 
     const deletarAvaliacao = useCallback(async (avaliacaoId) => {
         if (!window.confirm('Deseja deletar esta avaliação?')) return;
-
         try {
-            await apiCall(`/avaliacoes/${avaliacaoId}`, {
-                method: 'DELETE'
-            });
-            carregarAvaliacoesModeracao();
+            await apiCall(`/avaliacoes/${avaliacaoId}`, { method: 'DELETE' });
+            await carregarAvaliacoesModeracao();
             alert('Avaliação deletada!');
         } catch (error) {
-            alert('Erro: ' + error.message);
+            alert(`Erro: ${error.message}`);
         }
-    }, [carregarAvaliacoesModeracao]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [apiCall, carregarAvaliacoesModeracao]);
 
-    // Funções de edição de anime
-    const abrirModalEdicao = (anime) => {
-        setAnimeToEdit(anime);
+    const abrirModalEdicao = (midia) => {
+        setMidiaToEdit(midia);
         setEditModalOpen(true);
     };
 
     const fecharModalEdicao = () => {
         setEditModalOpen(false);
-        setAnimeToEdit(null);
+        setMidiaToEdit(null);
     };
 
-    const salvarEdicaoAnime = async (animeId, dados) => {
+    const salvarEdicaoMidia = async (midiaId, dados) => {
         try {
-            await apiCall(`/animes/${animeId}`, {
+            await apiCall(`/midias/${midiaId}`, {
                 method: 'PUT',
                 body: JSON.stringify(dados)
             });
-
-            await carregarDados();
-            alert('Anime atualizado com sucesso!');
+            await carregarDados(activeMediaType, searchTerm);
+            alert('Mídia atualizada com sucesso!');
         } catch (error) {
-            throw new Error(error.message || 'Erro ao atualizar anime');
+            throw new Error(error.message || 'Erro ao atualizar mídia');
         }
     };
 
-    const deletarAnime = async (animeId) => {
-        if (!window.confirm('Deseja deletar este anime?')) return;
+    const deletarMidia = async (midiaId) => {
+        if (!window.confirm('Deseja deletar esta mídia?')) return;
 
         try {
-            await apiCall(`/animes/${animeId}`, {
-                method: 'DELETE'
-            });
-            carregarDados();
-            alert('Anime deletado com sucesso!');
+            await apiCall(`/midias/${midiaId}`, { method: 'DELETE' });
+            await carregarDados(activeMediaType, searchTerm);
+            alert('Mídia deletada com sucesso!');
         } catch (error) {
-            alert('Erro: ' + error.message);
+            alert(`Erro: ${error.message}`);
         }
     };
 
-    // Funções de notícias
-    const abrirModalCriarNoticia = () => {
-        setCreateNoticiaModalOpen(true);
-    };
-
-    const fecharModalCriarNoticia = () => {
-        setCreateNoticiaModalOpen(false);
-    };
+    const abrirModalCriarNoticia = () => setCreateNoticiaModalOpen(true);
+    const fecharModalCriarNoticia = () => setCreateNoticiaModalOpen(false);
 
     const criarNoticia = async (dados) => {
         try {
@@ -414,87 +382,72 @@ function App() {
                 method: 'POST',
                 body: JSON.stringify(dados)
             });
-
-            // Recarregar notícias
-            await carregarDados();
+            await carregarDados(activeMediaType, searchTerm);
             alert('Notícia criada com sucesso!');
         } catch (error) {
             throw new Error(error.message || 'Erro ao criar notícia');
         }
     };
 
-    // Funções de avaliação
-    const abrirModalAvaliacao = (anime) => {
-        setAnimeToAvaliar(anime);
+    const abrirModalAvaliacao = (midia) => {
+        setMidiaToAvaliar(midia);
         setAvaliacaoModalOpen(true);
     };
 
     const fecharModalAvaliacao = () => {
         setAvaliacaoModalOpen(false);
-        setAnimeToAvaliar(null);
+        setMidiaToAvaliar(null);
     };
 
-    const criarAvaliacao = async (animeId, dados) => {
+    const criarAvaliacao = async (midiaId, dados) => {
         try {
             await apiCall('/avaliacoes', {
                 method: 'POST',
                 body: JSON.stringify({
-                    id_anime: animeId,
+                    id_midia: midiaId,
                     ...dados
                 })
             });
-
-            // Recarregar dados
-            await carregarDados();
+            await carregarDados(activeMediaType, searchTerm);
             alert('Avaliação publicada com sucesso!');
         } catch (error) {
             throw new Error(error.message || 'Erro ao criar avaliação');
         }
     };
 
-    // Funções de detalhes do anime
-    const abrirDetalhesAnime = (anime) => {
-        setAnimeDetalhes(anime);
+    const abrirDetalhesMidia = (midia) => {
+        setMidiaDetalhes(midia);
         setDetalhesModalOpen(true);
     };
 
-    const fecharDetalhesAnime = () => {
+    const fecharDetalhesMidia = () => {
         setDetalhesModalOpen(false);
-        setAnimeDetalhes(null);
+        setMidiaDetalhes(null);
     };
 
-    // Funções de criar atualização (moderadores/admins)
-    const abrirModalAtualizacao = (anime) => {
-        setAnimeParaAtualizar(anime);
+    const abrirModalAtualizacao = (midia) => {
+        setMidiaParaAtualizar(midia);
         setAtualizacaoModalOpen(true);
-        setDetalhesModalOpen(false); // Fecha a modal de detalhes
+        setDetalhesModalOpen(false);
     };
 
     const fecharModalAtualizacao = () => {
         setAtualizacaoModalOpen(false);
-        setAnimeParaAtualizar(null);
+        setMidiaParaAtualizar(null);
     };
 
     const handleAtualizacaoSuccess = async () => {
-        // Recarregar notificações e dados
-        await carregarDados();
+        await carregarDados(activeMediaType, searchTerm);
     };
 
-    // Implementar debounce na busca
-    useEffect(() => {
-        const timer = setTimeout(() => {
-            if (activeTab === 'catalogo') {
-                buscarAnimesBackend(searchTerm);
-            }
-        }, 500); // Aguarda 500ms após o usuário parar de digitar
-
-        return () => clearTimeout(timer);
-    }, [searchTerm, activeTab, buscarAnimesBackend]);
-
-    // Interface principal
     if (!user) {
         return <LoginForm onLogin={handleLogin} onRegistro={handleRegistro} />;
     }
+
+    const currentConfig = MEDIA_CONFIG[activeMediaType];
+    const isInList = (midiaId) => minhaLista.some(item => item.id_midia === midiaId);
+    const cardsDestaque = [...midias].sort((a, b) => (b?.nota_media || 0) - (a?.nota_media || 0)).slice(0, 8);
+    const cardsRecentes = [...midias].sort((a, b) => new Date(b?.data_lancamento || 0) - new Date(a?.data_lancamento || 0)).slice(0, 8);
 
     return (
         <div className="min-h-screen bg-gray-50">
@@ -503,6 +456,8 @@ function App() {
                 permissions={permissions}
                 activeTab={activeTab}
                 setActiveTab={setActiveTab}
+                activeMediaType={activeMediaType}
+                setActiveMediaType={setActiveMediaType}
                 notificacoes={notificacoes}
                 onLogout={handleLogout}
                 onMarcarNotificacoesLidas={marcarNotificacoesLidas}
@@ -510,25 +465,12 @@ function App() {
                 setShowMobileMenu={setShowMobileMenu}
             />
 
-            {/* Barra de pesquisa apenas nas abas relevantes */}
-            {(activeTab === 'home' || activeTab === 'minha-lista') && (
-                <SearchBar searchTerm={searchTerm} setSearchTerm={setSearchTerm} />
-            )}
-
-            {/* Barra de pesquisa especial do Catálogo */}
-            {activeTab === 'catalogo' && (
-                <div className="bg-gradient-to-r from-purple-600 to-blue-600 py-6 shadow-lg">
-                    <div className="container mx-auto px-4">
-                        <SearchBar
-                            searchTerm={searchTerm}
-                            setSearchTerm={setSearchTerm}
-                            placeholder="Buscar anime por título ou sinopse..."
-                        />
-                        <p className="text-white text-center mt-2 text-sm">
-                            {loading ? 'Buscando...' : `${animes.length} anime(s) encontrado(s)`}
-                        </p>
-                    </div>
-                </div>
+            {(activeTab === 'home' || activeTab === 'catalogo' || activeTab === 'minha-lista') && (
+                <SearchBar
+                    searchTerm={searchTerm}
+                    setSearchTerm={setSearchTerm}
+                    placeholder={currentConfig.searchPlaceholder}
+                />
             )}
 
             <main className="container mx-auto px-4 py-8">
@@ -541,28 +483,25 @@ function App() {
                                 <div className="mb-8">
                                     <h2 className="text-3xl font-bold mb-2 flex items-center gap-2">
                                         <Star className="text-yellow-500" fill="currentColor" />
-                                        Destaques da Semana
+                                        Destaques em {currentConfig.label}
                                     </h2>
-                                    <p className="text-gray-600">Os animes com maior pontuação da nossa comunidade</p>
+                                    <p className="text-gray-600">Os melhores {currentConfig.singular}s da comunidade</p>
                                 </div>
 
                                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 mb-12">
-                                    {animes
-                                        .sort((a, b) => (b?.nota_media || 0) - (a?.nota_media || 0))
-                                        .slice(0, 8)
-                                        .map(anime => (
-                                            <AnimeCard
-                                                key={anime.id_anime}
-                                                anime={anime}
-                                                showActions={permissions?.pode_moderar || permissions?.nivel_acesso === 'admin'}
-                                                onAdd={adicionarAnimeLista}
-                                                onEdit={abrirModalEdicao}
-                                                onDelete={deletarAnime}
-                                                onViewDetails={abrirDetalhesAnime}
-                                                isInList={minhaLista.some(item => item.id_anime === anime.id_anime)}
-                                                permissions={permissions}
-                                            />
-                                        ))}
+                                    {cardsDestaque.map(midia => (
+                                        <AnimeCard
+                                            key={midia.id_midia}
+                                            anime={midia}
+                                            showActions={permissions?.pode_moderar || permissions?.nivel_acesso === 'admin'}
+                                            onAdd={adicionarMidiaLista}
+                                            onEdit={abrirModalEdicao}
+                                            onDelete={deletarMidia}
+                                            onViewDetails={abrirDetalhesMidia}
+                                            isInList={isInList(midia.id_midia)}
+                                            permissions={permissions}
+                                        />
+                                    ))}
                                 </div>
 
                                 <div className="mb-8">
@@ -570,26 +509,23 @@ function App() {
                                         <TrendingUp className="text-purple-600" />
                                         Lançamentos Recentes
                                     </h2>
-                                    <p className="text-gray-600">Os últimos animes adicionados ao catálogo</p>
+                                    <p className="text-gray-600">Novos {currentConfig.singular}s no catálogo</p>
                                 </div>
 
                                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                                    {animes
-                                        .sort((a, b) => new Date(b?.data_lancamento || 0) - new Date(a?.data_lancamento || 0))
-                                        .slice(0, 8)
-                                        .map(anime => (
-                                            <AnimeCard
-                                                key={anime.id_anime}
-                                                anime={anime}
-                                                showActions={permissions?.pode_moderar || permissions?.nivel_acesso === 'admin'}
-                                                onAdd={adicionarAnimeLista}
-                                                onEdit={abrirModalEdicao}
-                                                onDelete={deletarAnime}
-                                                onViewDetails={abrirDetalhesAnime}
-                                                isInList={minhaLista.some(item => item.id_anime === anime.id_anime)}
-                                                permissions={permissions}
-                                            />
-                                        ))}
+                                    {cardsRecentes.map(midia => (
+                                        <AnimeCard
+                                            key={midia.id_midia}
+                                            anime={midia}
+                                            showActions={permissions?.pode_moderar || permissions?.nivel_acesso === 'admin'}
+                                            onAdd={adicionarMidiaLista}
+                                            onEdit={abrirModalEdicao}
+                                            onDelete={deletarMidia}
+                                            onViewDetails={abrirDetalhesMidia}
+                                            isInList={isInList(midia.id_midia)}
+                                            permissions={permissions}
+                                        />
+                                    ))}
                                 </div>
                             </div>
                         )}
@@ -597,34 +533,32 @@ function App() {
                         {activeTab === 'catalogo' && (
                             <div>
                                 <div className="mb-6 flex justify-between items-center">
-                                    <h2 className="text-3xl font-bold">Catálogo Completo</h2>
+                                    <h2 className="text-3xl font-bold">Catálogo de {currentConfig.label}</h2>
                                     {!loading && (
-                                        <span className="text-gray-600">
-                                            {animes.length} anime(s)
-                                        </span>
+                                        <span className="text-gray-600">{midias.length} resultado(s)</span>
                                     )}
                                 </div>
 
                                 {loading ? (
                                     <LoadingSpinner />
-                                ) : animes.length === 0 ? (
+                                ) : midias.length === 0 ? (
                                     <div className="text-center py-12">
                                         <p className="text-gray-500 text-lg">
-                                            {searchTerm ? 'Nenhum anime encontrado com essa busca' : 'Nenhum anime disponível'}
+                                            {searchTerm ? 'Nenhuma mídia encontrada com essa busca' : 'Nenhuma mídia disponível'}
                                         </p>
                                     </div>
                                 ) : (
                                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                                        {animes.map(anime => (
+                                        {midias.map(midia => (
                                             <AnimeCard
-                                                key={anime.id_anime}
-                                                anime={anime}
+                                                key={midia.id_midia}
+                                                anime={midia}
                                                 showActions={permissions?.pode_moderar || permissions?.nivel_acesso === 'admin'}
-                                                onAdd={adicionarAnimeLista}
+                                                onAdd={adicionarMidiaLista}
                                                 onEdit={abrirModalEdicao}
-                                                onDelete={deletarAnime}
-                                                onViewDetails={abrirDetalhesAnime}
-                                                isInList={minhaLista.some(item => item.id_anime === anime.id_anime)}
+                                                onDelete={deletarMidia}
+                                                onViewDetails={abrirDetalhesMidia}
+                                                isInList={isInList(midia.id_midia)}
                                                 permissions={permissions}
                                             />
                                         ))}
@@ -638,16 +572,19 @@ function App() {
                                 <h2 className="text-3xl font-bold mb-6">Minha Lista</h2>
                                 <MinhaListaTab
                                     minhaLista={minhaLista}
+                                    activeMediaType={activeMediaType}
+                                    onChangeMediaType={setActiveMediaType}
                                     onUpdate={atualizarItemLista}
                                     onRemove={removerItemLista}
                                     onAvaliar={abrirModalAvaliacao}
-                                    onViewDetails={abrirDetalhesAnime}
+                                    onViewDetails={abrirDetalhesMidia}
                                 />
                             </div>
                         )}
 
-
-                        {activeTab === 'estatisticas' && <EstatisticasTab estatisticas={estatisticas} />}
+                        {activeTab === 'estatisticas' && (
+                            <EstatisticasTab estatisticas={estatisticas} resumo={estatisticasResumo} />
+                        )}
 
                         {activeTab === 'noticias' && (
                             <NoticiasTab
@@ -673,10 +610,10 @@ function App() {
             </main>
 
             <EditAnimeModal
-                anime={animeToEdit}
+                anime={midiaToEdit}
                 isOpen={editModalOpen}
                 onClose={fecharModalEdicao}
-                onSave={salvarEdicaoAnime}
+                onSave={salvarEdicaoMidia}
             />
 
             <CreateNoticiaModal
@@ -690,16 +627,16 @@ function App() {
                 isOpen={avaliacaoModalOpen}
                 onClose={fecharModalAvaliacao}
                 onSave={criarAvaliacao}
-                anime={animeToAvaliar}
+                anime={midiaToAvaliar}
             />
 
             <AnimeDetalhesModal
                 isOpen={detalhesModalOpen}
-                onClose={fecharDetalhesAnime}
-                anime={animeDetalhes}
+                onClose={fecharDetalhesMidia}
+                anime={midiaDetalhes}
                 onAvaliar={abrirModalAvaliacao}
                 apiCall={apiCall}
-                isInList={animeDetalhes ? minhaLista.some(item => item.id_anime === animeDetalhes.id_anime) : false}
+                isInList={midiaDetalhes ? isInList(midiaDetalhes.id_midia) : false}
                 permissions={permissions}
                 onCriarAtualizacao={abrirModalAtualizacao}
             />
@@ -707,7 +644,7 @@ function App() {
             <CriarAtualizacaoModal
                 isOpen={atualizacaoModalOpen}
                 onClose={fecharModalAtualizacao}
-                anime={animeParaAtualizar}
+                anime={midiaParaAtualizar}
                 apiCall={apiCall}
                 onSuccess={handleAtualizacaoSuccess}
             />
