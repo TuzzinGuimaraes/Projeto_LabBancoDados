@@ -121,19 +121,19 @@ build: build-frontend
 
 import-animes:
 	$(DOCKER_COMPOSE) up -d mysql mongodb
-	$(DOCKER_COMPOSE) run --rm backend python -m importacao.run_import --tipo anime --paginas 50 --workers $(IMPORT_WORKERS)
+	$(DOCKER_COMPOSE) run --rm backend python -m importacao.run_import --tipo anime --paginas 500 --workers $(IMPORT_WORKERS)
 
 import-mangas:
 	$(DOCKER_COMPOSE) up -d mysql mongodb
-	$(DOCKER_COMPOSE) run --rm backend python -m importacao.run_import --tipo manga --paginas 50 --workers $(IMPORT_WORKERS)
+	$(DOCKER_COMPOSE) run --rm backend python -m importacao.run_import --tipo manga --paginas 500 --workers $(IMPORT_WORKERS)
 
 import-jogos:
 	$(DOCKER_COMPOSE) up -d mysql mongodb
-	$(DOCKER_COMPOSE) run --rm backend python -m importacao.run_import --tipo jogo --paginas 50 --workers $(IMPORT_WORKERS)
+	$(DOCKER_COMPOSE) run --rm backend python -m importacao.run_import --tipo jogo --paginas 500 --workers $(IMPORT_WORKERS)
 
 import-all:
 	$(DOCKER_COMPOSE) up -d mysql mongodb
-	$(DOCKER_COMPOSE) run --rm backend python -m importacao.run_import --tipo todos --paginas 50 --workers $(IMPORT_WORKERS)
+	$(DOCKER_COMPOSE) run --rm backend python -m importacao.run_import --tipo todos --paginas 500 --workers $(IMPORT_WORKERS)
 
 clean-frontend:
 	rm -rf $(FRONTEND_DIR)/build
